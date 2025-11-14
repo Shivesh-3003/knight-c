@@ -54,30 +54,47 @@ contract TreasuryVault {
         return (pot.budget, pot.spent, pot.threshold);
     }
 
-    function getPendingDetails(bytes32 txHash) external view returns (
-        bytes32 potId,
-        uint256 recipientCount,
-        uint256 approvalCount,
-        bool executed
-    ) {
-        PendingPayment storage payment = pending[txHash];
-        return (
-            payment.potId,
-            payment.recipients.length,
-            payment.approvalCount,
-            payment.executed
-        );
+    address public cfo;
+    mapping(address => bool) public approvers;
+
+    modifier onlyCfo() {
+        _onlyCfo();
+        _;
     }
+
+    function _onlyCfo() internal view {
+        require(msg.sender == cfo, "Only CFO can execute this");
+    }
+
+    modifier onlyApprover(bytes32 potId) {
+        _onlyApprover(potId);
+        _;
+    }
+
+    function _onlyApprover(bytes32 potId) internal view {
+        require(_isApprover(potId, msg.sender), "Not approver");
+    }
+
+    constructor(address _cfo) {
+        cfo = _cfo;
+        approvers[_cfo] = true;
+    }
+
 
     function depositToTreasury(uint256 amount) external {
-        IERC20(USDC).transferFrom(msg.sender, address(this), amount);
+        require(IERC20(USDC).transferFrom(msg.sender, address(this), amount), "USDC transfer failed");
     }
 
-    function createPot(bytes32 potId, uint256 budget, address[] calldata approvers, uint256 threshold) external {
-        pots[potId] = Pot(budget, 0, approvers, threshold);
+    function createPot(bytes32 potId, uint256 budget, address[] calldata _approvers, uint256 threshold) external onlyCfo {
+        pots[potId] = Pot({
+            budget: budget,
+            spent: 0,
+            approvers: _approvers,
+            threshold: threshold
+        });
     }
 
-    function addBeneficiary(bytes32 potId, address beneficiary) external {
+    function addBeneficiary(bytes32 potId, address beneficiary) external onlyCfo {
         whitelist[potId][beneficiary] = true;
     }
 
@@ -93,15 +110,20 @@ contract TreasuryVault {
             return txHash;
         }
 
-        pending[txHash] = PendingPayment(potId, recipients, amounts, 0, false);
+        pending[txHash] = PendingPayment({
+            potId: potId,
+            recipients: recipients,
+            amounts: amounts,
+            approvalCount: 0,
+            executed: false
+        });
         pendingQueue.push(txHash);
         return txHash;
     }
 
-    function approvePayment(bytes32 txHash) external {
+    function approvePayment(bytes32 txHash) external onlyApprover(pending[txHash].potId) {
         PendingPayment storage payment = pending[txHash];
         require(!payment.executed, "Executed");
-        require(_isApprover(payment.potId, msg.sender), "Not approver");
         require(!hasApproved[txHash][msg.sender], "Already approved");
 
         hasApproved[txHash][msg.sender] = true;
@@ -121,12 +143,12 @@ contract TreasuryVault {
         for (uint i = 0; i < recipients.length; i++) {
             require(whitelist[potId][recipients[i]], "Not whitelisted");
             pot.spent += amounts[i];
-            IERC20(USDC).transfer(recipients[i], amounts[i]);
+            require(IERC20(USDC).transfer(recipients[i], amounts[i]), "USDC transfer failed");
             emit PaymentExecuted(potId, recipients[i], amounts[i], block.timestamp);
         }
     }
 
-    function reallocate(bytes32 fromPot, bytes32 toPot, uint256 amount) external {
+    function reallocate(bytes32 fromPot, bytes32 toPot, uint256 amount) external onlyCfo {
         Pot storage source = pots[fromPot];
         require(source.budget - source.spent >= amount, "Insufficient");
         source.budget -= amount;
@@ -134,14 +156,22 @@ contract TreasuryVault {
         emit BudgetReallocated(fromPot, toPot, amount);
     }
 
+    function addApprover(address approver) external onlyCfo {
+        approvers[approver] = true;
+    }
+
+    function removeApprover(address approver) external onlyCfo {
+        approvers[approver] = false;
+    }
+
     function _sum(uint256[] memory amounts) internal pure returns (uint256 total) {
         for (uint i = 0; i < amounts.length; i++) total += amounts[i];
     }
 
     function _isApprover(bytes32 potId, address user) internal view returns (bool) {
-        address[] memory approvers = pots[potId].approvers;
-        for (uint i = 0; i < approvers.length; i++) {
-            if (approvers[i] == user) return true;
+        address[] memory _approvers = pots[potId].approvers;
+        for (uint i = 0; i < _approvers.length; i++) {
+            if (_approvers[i] == user) return true;
         }
         return false;
     }

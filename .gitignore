@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 frontend/node_modules/
+lib/
 
 # Environment variables
 .env
@@ -12,6 +13,7 @@ dist/
 build/
 frontend/dist/
 frontend/build/
+out/
 
 # Hardhat
 cache/
