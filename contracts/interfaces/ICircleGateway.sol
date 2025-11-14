@@ -3,41 +3,55 @@ pragma solidity ^0.8.20;
 
 /**
  * @title ICircleGateway
- * @notice Interface for Circle Gateway on/off ramp integration
- * @dev Handles USD <-> USDC conversion for treasury operations
+ * @notice Interface for Circle Gateway - unified USDC balance across chains
+ * @dev Arc Testnet Gateway Contracts:
+ *      - GatewayWallet: 0x0077777d7EBA4688BDeF3E311b846F25870A19B9
+ *      - GatewayAuthorization: 0x0022222ABE238Cc2C7Bb1f21003F0a260052475B
+ *
+ * Circle Gateway allows instant crosschain USDC transfers with next-block access.
+ * Users deposit USDC to create a unified balance accessible across multiple chains.
  */
 interface ICircleGateway {
     /**
-     * @notice Deposit USD and receive USDC
-     * @param amount USD amount to deposit
-     * @param recipient Address to receive USDC
-     * @return USDC amount minted
+     * @notice Deposit USDC to Gateway wallet
+     * @param amount USDC amount to deposit (6 decimals)
+     * @return success True if deposit succeeded
      */
-    function deposit(uint256 amount, address recipient) external returns (uint256);
+    function deposit(uint256 amount) external returns (bool);
 
     /**
-     * @notice Withdraw USDC and receive USD
-     * @param amount USDC amount to withdraw
-     * @param bankAccount Destination bank account details
-     * @return Withdrawal reference ID
+     * @notice Withdraw USDC from Gateway to destination chain
+     * @param amount USDC amount to withdraw (6 decimals)
+     * @param destinationDomain Target chain domain ID
+     * @param recipient Address to receive USDC on destination chain
+     * @return success True if withdrawal initiated
      */
-    function withdraw(uint256 amount, bytes memory bankAccount) external returns (bytes32);
+    function withdraw(
+        uint256 amount,
+        uint32 destinationDomain,
+        address recipient
+    ) external returns (bool);
 
     /**
-     * @notice Get deposit fee
-     * @param amount Deposit amount
-     * @return Fee in basis points
+     * @notice Get Gateway balance for an account
+     * @param account Address to query
+     * @return balance Available USDC balance in Gateway (6 decimals)
      */
-    function getDepositFee(uint256 amount) external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
 
     /**
-     * @notice Get withdrawal fee
-     * @param amount Withdrawal amount
-     * @return Fee in basis points
+     * @notice Check if account is authorized for Gateway
+     * @param account Address to check
+     * @return authorized True if account has Gateway access
      */
-    function getWithdrawalFee(uint256 amount) external view returns (uint256);
+    function isAuthorized(address account) external view returns (bool);
 
     // Events
-    event Deposit(address indexed recipient, uint256 usdAmount, uint256 usdcAmount);
-    event Withdrawal(address indexed sender, uint256 usdcAmount, bytes32 indexed refId);
+    event Deposited(address indexed account, uint256 amount);
+    event Withdrawn(
+        address indexed account,
+        uint256 amount,
+        uint32 indexed destinationDomain,
+        address indexed recipient
+    );
 }

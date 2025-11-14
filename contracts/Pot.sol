@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./interfaces/IUSDC.sol";
+
 /**
  * @title Pot
  * @notice Departmental smart contract sub-account with configurable privacy
@@ -19,6 +21,10 @@ contract Pot {
     bool public isPrivate;
     address public treasury;
     address public manager; // Department head
+
+    // USDC token on Arc Network
+    // Arc Testnet USDC: 0x3600000000000000000000000000000000000000
+    IUSDC public immutable usdc;
 
     // Budget management
     uint256 public allocatedBudget;
@@ -80,12 +86,19 @@ contract Pot {
         uint256 _initialBudget,
         uint256 _approvalThreshold
     ) {
+        require(_treasury != address(0), "Invalid treasury address");
+        require(_manager != address(0), "Invalid manager address");
+
         name = _name;
         isPrivate = _isPrivate;
         treasury = _treasury;
         manager = _manager;
         allocatedBudget = _initialBudget;
         approvalThreshold = _approvalThreshold;
+
+        // Get USDC address from Treasury
+        // Arc Testnet USDC: 0x3600000000000000000000000000000000000000
+        usdc = IUSDC(0x3600000000000000000000000000000000000000);
     }
 
     /**
@@ -195,6 +208,9 @@ contract Pot {
         uint256 amount,
         string memory purpose
     ) internal {
+        require(recipient != address(0), "Invalid recipient address");
+        require(amount > 0, "Amount must be greater than 0");
+
         // Update budget
         spentAmount += amount;
 
@@ -207,8 +223,12 @@ contract Pot {
             executed: true
         }));
 
-        // TODO: Transfer USDC to recipient
-        // If isPrivate, use Arc's shielded transaction
+        // Transfer USDC to recipient
+        bool success = usdc.transfer(recipient, amount);
+        require(success, "USDC payment failed");
+
+        // Note: Arc's privacy features (confidential transfers) are planned but not yet available
+        // When available, isPrivate flag will trigger shielded transactions with encrypted amounts
 
         emit PaymentExecuted(recipient, amount, purpose);
     }

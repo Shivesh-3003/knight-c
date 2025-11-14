@@ -3,8 +3,17 @@ pragma solidity ^0.8.20;
 
 /**
  * @title Privacy
- * @notice Utility library for Arc privacy features and SalaryShield temporal jitter
- * @dev Provides helper functions for configurable privacy and timing obfuscation
+ * @notice Utility library for Arc Network privacy features and SalaryShield temporal jitter
+ * @dev Provides helper functions for Arc's opt-in privacy and timing obfuscation
+ *
+ * Arc Privacy Features:
+ * - Opt-in confidential transfers (amounts encrypted, addresses visible)
+ * - View keys for auditability and compliance
+ * - Privacy Module planned for future releases
+ * - Supports TEE, MPC, FHE, and ZK backends
+ *
+ * Note: Privacy features are on Arc's roadmap and not yet available on testnet.
+ * This library provides compatibility layer for future privacy integration.
  */
 library Privacy {
     /**

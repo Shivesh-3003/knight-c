@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./Pot.sol";
+import "./interfaces/IUSDC.sol";
 
 /**
  * @title Flow
@@ -84,7 +85,7 @@ contract Flow {
         uint256[] memory amounts,
         bool useSalaryShield,
         string memory description
-    ) external returns (bytes32) {
+    ) public returns (bytes32) {
         require(recipients.length == amounts.length, "Array length mismatch");
 
         bytes32 flowId = keccak256(abi.encodePacked(
@@ -263,7 +264,12 @@ contract Flow {
      * @notice Internal: Execute budget allocation
      */
     function _executeAllocation(FlowConfig storage flow) internal {
-        // TODO: Transfer USDC from Treasury to Pot
+        require(flow.recipients.length > 0, "No recipients");
+        require(flow.amounts.length > 0, "No amounts");
+
+        // Note: Treasury must call Flow.executeFlow() or handle allocation directly
+        // This function notifies the Pot to update its allocated budget
+        // The actual USDC transfer should be done by Treasury before calling this
         Pot pot = Pot(flow.recipients[0]);
         pot.allocateBudget(flow.amounts[0]);
     }

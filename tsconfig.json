@@ -12,6 +12,6 @@
     "rootDir": "./",
     "moduleResolution": "node"
   },
-  "include": ["./scripts", "./test"],
+  "include": ["./scripts", "./test", "./typechain-types"],
   "exclude": ["node_modules", "frontend"]
 }

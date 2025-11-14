@@ -118,32 +118,61 @@ knight-c/
 - Circle USDC (treasury operations)
 - Circle Yield (USYC for idle reserves)
 
-## Getting Started
+## 🚀 Quick Start
+
+### **✅ Already Deployed on Arc Testnet!**
+
+Your contracts are live and operational:
+
+```
+Treasury: 0x3940892e1e87C82fa7f314e5579045FCA370D092
+Flow:     0xd1094997FD7A74b93FfF1A377E7d4E2D0D216EC8
+
+Network:  Arc Testnet (Chain ID: 5042002)
+Explorer: https://testnet.arcscan.app
+```
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (run `nvm use 20`)
 - npm or yarn
-- MetaMask or compatible Web3 wallet
+- MetaMask configured for Arc Testnet
 
 ### Installation
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Compile contracts
-npm run compile
+# 2. Compile contracts
+npx hardhat compile
 
-# Run tests
-npm run test
+# 3. Run tests (create tests first)
+npx hardhat test
 
-# Deploy to Arc testnet
-npm run deploy:testnet
-
-# Start frontend development server
-cd frontend && npm run dev
+# 4. Interact with deployed contracts
+npx hardhat console --network arcTestnet
 ```
+
+### Running the Application
+
+```bash
+# 1. Check system status
+npx hardhat run scripts/check-budgets.ts --network arcTestnet
+
+# 2. Frontend (after configuration)
+cd frontend
+npm install
+npm run dev
+```
+
+### 📖 Full Documentation
+
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for:
+- Complete deployment history
+- Next steps and tutorials
+- Script examples
+- Security best practices
 
 ## Demo Flow
 

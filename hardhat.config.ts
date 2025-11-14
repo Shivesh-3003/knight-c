@@ -17,23 +17,30 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 31337,
     },
+    // Arc Network Testnet Configuration
+    // - RPC: https://rpc.testnet.arc.network
+    // - Chain ID: 5042002 (0x4cef52)
+    // - Explorer: https://testnet.arcscan.app
+    // - Faucet: https://faucet.circle.com
+    // - Gas Token: USDC (not ETH!)
     arcTestnet: {
-      url: process.env.ARC_TESTNET_RPC_URL || "https://rpc.arc-testnet.network",
+      url: process.env.ARC_TESTNET_RPC_URL || "https://rpc.testnet.arc.network",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      chainId: 12345, // TODO: Replace with actual Arc testnet chain ID
+      chainId: 5042002,
+      gasPrice: "auto", // Arc uses USDC for gas, priced via EIP-1559-like mechanism
     },
   },
   etherscan: {
     apiKey: {
-      arcTestnet: process.env.ARC_EXPLORER_API_KEY || "your-api-key",
+      arcTestnet: process.env.ARC_EXPLORER_API_KEY || "not-required",
     },
     customChains: [
       {
         network: "arcTestnet",
-        chainId: 12345,
+        chainId: 5042002,
         urls: {
-          apiURL: "https://api.explorer.arc-testnet.network/api",
-          browserURL: "https://explorer.arc-testnet.network",
+          apiURL: "https://testnet.arcscan.app/api",
+          browserURL: "https://testnet.arcscan.app",
         },
       },
     ],
