@@ -1,5 +1,6 @@
-import { stringToHex, pad } from 'viem';
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-export function stringToBytes32(str: string): `0x${string}` {
-  return pad(stringToHex(str), { size: 32 });
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }

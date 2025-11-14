@@ -1,121 +1,169 @@
-import { Shield, TrendingUp, Clock, Lock } from 'lucide-react';
-import { useTreasuryBalance } from '../hooks/useTreasury';
-import { usePots } from '../hooks/usePots';
-import TreasuryOverview from '../components/TreasuryOverview';
-import PotCard from '../components/PotCard';
-import RecentPayments from '../components/RecentPayments';
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { ArrowUpRight, DollarSign } from "lucide-react";
+import { SinglePaymentModal } from "@/components/SinglePaymentModal";
+import { BatchPaymentModal } from "@/components/BatchPaymentModal";
 
-/**
- * Dashboard - Main treasury overview page
- *
- * Features:
- * - Real-time global treasury balance
- * - Departmental Pot status cards
- * - Recent payment activity
- * - Budget utilization metrics
- * - Quick actions for CFO
- */
+const POTS = [
+  {
+    id: "engineering",
+    name: "Engineering",
+    budget: 2000000,
+    spent: 1200000,
+    color: "hsl(var(--chart-1))",
+  },
+  {
+    id: "marketing",
+    name: "Marketing",
+    budget: 500000,
+    spent: 380000,
+    color: "hsl(var(--chart-2))",
+  },
+  {
+    id: "operations",
+    name: "Operations",
+    budget: 800000,
+    spent: 450000,
+    color: "hsl(var(--chart-3))",
+  },
+];
+
 export default function Dashboard() {
-  const { balance, isLoading: balanceLoading } = useTreasuryBalance();
-  const { pots, isLoading: potsLoading } = usePots();
+  const [selectedPot, setSelectedPot] = useState<typeof POTS[0] | null>(null);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [showSingleModal, setShowSingleModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+
+  const totalTreasury = 10000000;
+
+  const handleMakePayment = (pot: typeof POTS[0], batch = false) => {
+    setSelectedPot(pot);
+    setIsBatchMode(batch);
+    if (batch) {
+      setShowBatchModal(true);
+    } else {
+      setShowSingleModal(true);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
 
   return (
     <div className="space-y-8">
-      {/* Header */}
+      {/* Total Treasury */}
+      <Card className="card-shadow border-2">
+        <CardHeader className="pb-3">
+          <CardDescription className="text-sm font-medium">Total Treasury Balance</CardDescription>
+          <CardTitle className="text-5xl font-bold text-financial">
+            {formatCurrency(totalTreasury)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-1 text-success">
+              <ArrowUpRight className="h-4 w-4" />
+              <span className="font-medium">USDC</span>
+            </div>
+            <span className="text-muted-foreground">on Arc Network</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Department Pots */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Treasury Dashboard</h1>
-        <p className="text-gray-600 mt-2">
-          Real-time visibility across all funds, updated every 0.4 seconds
-        </p>
-      </div>
+        <h2 className="mb-4 text-2xl font-bold">Department Budgets</h2>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {POTS.map((pot) => {
+            const available = pot.budget - pot.spent;
+            const percentSpent = (pot.spent / pot.budget) * 100;
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <MetricCard
-          title="Total Treasury"
-          value={balanceLoading ? "Loading..." : `$${balance?.formatted || '0'}`}
-          icon={<TrendingUp className="w-6 h-6" />}
-          change="+2.4%"
-          changeType="positive"
-        />
-        <MetricCard
-          title="Active Pots"
-          value={potsLoading ? "..." : pots?.length || 0}
-          icon={<Shield className="w-6 h-6" />}
-          subtitle="Departments"
-        />
-        <MetricCard
-          title="Scheduled Flows"
-          value="12"
-          icon={<Clock className="w-6 h-6" />}
-          subtitle="Automated"
-        />
-        <MetricCard
-          title="Private Pots"
-          value="2"
-          icon={<Lock className="w-6 h-6" />}
-          subtitle="Arc Privacy"
-        />
-      </div>
+            return (
+              <Card key={pot.id} className="card-shadow card-hover">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-xl">{pot.name}</CardTitle>
+                      <CardDescription className="mt-1">Department Budget</CardDescription>
+                    </div>
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: pot.color }}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Budget</span>
+                      <span className="font-semibold text-financial">
+                        {formatCurrency(pot.budget)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Spent</span>
+                      <span className="font-semibold text-financial">
+                        {formatCurrency(pot.spent)}
+                      </span>
+                    </div>
+                    <Progress value={percentSpent} className="h-2" />
+                    <div className="flex justify-between text-sm font-medium">
+                      <span className="text-success">Available</span>
+                      <span className="text-success text-financial">
+                        {formatCurrency(available)}
+                      </span>
+                    </div>
+                  </div>
 
-      {/* Treasury Overview Chart */}
-      <TreasuryOverview />
-
-      {/* Departmental Pots */}
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-semibold text-gray-900">Departmental Pots</h2>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-            Create New Pot
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {potsLoading ? (
-            <div className="col-span-3 text-center py-12">Loading pots...</div>
-          ) : (
-            pots?.map((pot) => (
-              <PotCard key={pot.id} pot={pot} />
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <RecentPayments limit={10} />
-    </div>
-  );
-}
-
-interface MetricCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  change?: string;
-  changeType?: 'positive' | 'negative';
-  subtitle?: string;
-}
-
-function MetricCard({ title, value, icon, change, changeType, subtitle }: MetricCardProps) {
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <p className="text-sm text-gray-600 mb-1">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          {change && (
-            <p className={`text-sm mt-1 ${changeType === 'positive' ? 'text-green-600' : 'text-red-600'}`}>
-              {change}
-            </p>
-          )}
-          {subtitle && (
-            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
-          )}
-        </div>
-        <div className="text-blue-600">
-          {icon}
+                  <div className="space-y-2 pt-2">
+                    <Button
+                      onClick={() => handleMakePayment(pot, false)}
+                      className="w-full"
+                      size="sm"
+                    >
+                      <DollarSign className="mr-2 h-4 w-4" />
+                      Make Payment
+                    </Button>
+                    {pot.id === "engineering" && (
+                      <Button
+                        onClick={() => handleMakePayment(pot, true)}
+                        variant="outline"
+                        className="w-full"
+                        size="sm"
+                      >
+                        Batch Payment (Payroll)
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
+
+      {selectedPot && (
+        <>
+          <SinglePaymentModal
+            open={showSingleModal}
+            onOpenChange={setShowSingleModal}
+            pot={selectedPot}
+          />
+          <BatchPaymentModal
+            open={showBatchModal}
+            onOpenChange={setShowBatchModal}
+            pot={selectedPot}
+          />
+        </>
+      )}
     </div>
   );
 }
