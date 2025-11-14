@@ -1,218 +1,140 @@
-# Knight-C: Military-Grade Treasury Infrastructure
+# Knight-C Treasury Platform
 
-**Built on Arc. Powered by Circle. Secured by smart contracts.**
+Knight-C is a simplified treasury management system built on Arc Network, featuring unified USDC management with departmental budget enforcement and multi-signature approvals.
 
-Knights protect treasure. We protect yours.
+## Architecture
 
-## Overview
+**Layer 1: Main Treasury** - Unified USDC vault
+**Layer 2: Departmental Pots** - Budget enforcement per department
+**Layer 3: Payment Flows** - Approval workflows + batch payments + reallocation
 
-Knight-C is military-grade smart contract treasury infrastructure built on Arc blockchain that provides corporate treasuries with:
+**Hero Features:**
+- Sub-second finality (Arc Network)
+- Mathematical budget enforcement (on-chain)
+- Multi-signature approvals
+- Real-time budget reallocation
 
-- **One Unified Global Treasury** - Real-time visibility across all funds on a single dashboard
-- **Instant Cross-Border Settlement** - Sub-second finality via Arc, zero FX fees with USDC
-- **Configurable Privacy** - Public budgets where transparency helps, private where confidentiality matters
-- **Smart Contract Fraud Prevention** - Multi-sig approvals, beneficiary whitelists, time-locks enforced by code
-- **Automated Budget Enforcement** - Departmental limits are smart contract state variables
-- **Scheduled Distributions** - Recurring payments execute automatically via keeper network
-- **Immutable Audit Trail** - Every transaction cryptographically verifiable on-chain
-- **Defense-in-Depth Payroll Privacy** - SalaryShield Mode with temporal jitter obfuscation
+## Tech Stack
 
-## The Problem
+- **Blockchain**: Arc Network Testnet
+- **Smart Contract**: TreasuryVault.sol (Solidity 0.8.18)
+- **Frontend**: React + Vite + wagmi
+- **Gas Token**: USDC (not ETH)
 
-Corporate treasuries face $1M-$2M+ in annual costs from:
-- No real-time visibility across global accounts
-- 3-5 day cross-border payments with 2-3% FX fees
-- Budget overruns (15-20% annually) with no enforcement
-- $1.8B annual fraud losses from Business Email Compromise
-- Competitive intelligence leakage on public blockchains
-- 25+ hours/week on manual reconciliation and payment processing
+## Quick Start
 
-## The Solution
+### 1. Install Dependencies
 
-Knight-C provides treasury infrastructure **impossible to build** on traditional banking or any other blockchain:
+```bash
+npm install
+cd frontend && npm install && cd ..
+```
 
-### Three-Layer Architecture
+### 2. Setup Environment
 
-#### Layer 1: Main Treasury (Smart Contract Wallet)
-- Holds all company USDC deposited via Circle Gateway
-- Central source of truth for global liquidity
-- CFO controls top-level allocations
+Create `.env` file:
 
-#### Layer 2: Departmental Pots (Configurable Privacy)
-Smart contract "sub-accounts" for each department with:
-- Allocated budget (enforced on-chain)
-- Privacy setting (Public or Private via Arc's configurable privacy)
-- Spending rules (approval thresholds, whitelists)
-- Automated Flows (recurring distributions)
+```
+PRIVATE_KEY=your_private_key
+TREASURY_ADDRESS=deployed_contract_address
+CFO_ADDRESS=cfo_wallet_address
+ENG_VP_ADDRESS=engineering_vp_address
+```
 
-**Example Configuration:**
-- Engineering Pot: **PRIVATE** ($2M) - Salary data is competitively sensitive
-- Marketing Pot: **PUBLIC** ($500K) - Team wants transparency for accountability
-- Operations Pot: **PUBLIC** ($750K) - Standard vendor relationships
+### 3. Deploy Contract
 
-#### Layer 3: Automated Flows (Treasury Operations)
-- **Allocation Flows:** Monthly budget distributions Main Treasury → Pots
-- **Payment Flows:** Batch payroll, vendor payments, subscriptions
-- **Approval Flows:** Multi-signature thresholds (>$100K requires CFO + department head)
-- **Enforcement Flows:** Budget validation before every transaction
+```bash
+npx hardhat run scripts/deploy.ts --network arc
+```
 
-### Hero Feature: SalaryShield Military-Grade Payroll
+### 4. Setup Pots
 
-For ultra-sensitive payroll, Knight-C provides **defense-in-depth privacy:**
+```bash
+npx hardhat run scripts/setup.ts --network arc
+```
 
-**Standard Private Pot:** Uses Arc's native shielding (external observers see "transaction occurred" but not amounts/recipients)
+### 5. Run Frontend
 
-**SalaryShield Mode:** Adds proprietary temporal jitter technology
-- Each payment executes with randomized 50-200ms delay
-- Payments complete over ~10 seconds instead of simultaneously
-- Even if Arc's privacy were compromised, timing analysis cannot link payments together
-- **Military-grade privacy through multiple defense layers**
+```bash
+cd frontend
+npm run dev
+```
 
-## Why Arc
+## Contract Structure
 
-Knight-C is **impossible to build** on any other blockchain:
+### TreasuryVault.sol
 
-1. **Configurable Privacy** - Public Marketing Pot + Private Engineering Pot in SAME treasury
-2. **USDC as Native Gas** - Predictable costs ($0.82 for 50-employee payroll, every time)
-3. **Sub-Second Finality** - 0.4-second deterministic finality via Malachite consensus
-4. **Circle Platform Integration** - Gateway (on/off ramps), Yield (4% APY), complete financial infrastructure
-5. **EVM Compatibility** - Standard Solidity/Hardhat/Wagmi stack
+**Key Functions:**
+- `depositToTreasury(amount)` - Fund the treasury
+- `createPot(potId, budget, approvers, threshold)` - Create department pot
+- `addBeneficiary(potId, beneficiary)` - Whitelist payment recipient
+- `submitPayment(potId, recipients, amounts)` - Execute/queue payment
+- `approvePayment(txHash)` - Approve pending payment
+- `reallocate(fromPot, toPot, amount)` - Reallocate budget between pots
+- `getPotDetails(potId)` - Get pot budget/spent/threshold
+- `getPendingDetails(txHash)` - Get pending payment details
+
+## Demo Flow
+
+**Act 1**: Show dashboard - $10M treasury, 3 departmental pots
+**Act 2**: Marketing pays $80K → sub-second finality → ~1¢ gas
+**Act 3**: Engineering VP submits $120K payroll → requires 2/2 approvals → CFO approves → executes
+**Act 4**: Marketing tries $450K (only $420K available) → blocked → CFO reallocates $30K from Operations → succeeds
+**Act 5**: Show scheduled flows mockup (roadmap)
+**Act 6**: Generate audit report from on-chain events
+**Act 7**: Privacy features roadmap
+
+## Arc Network Info
+
+- **RPC**: https://rpc.testnet.arc.network
+- **Chain ID**: 5042002
+- **USDC Address**: 0x3600000000000000000000000000000000000000
+- **Explorer**: https://testnet.arcscan.app
+- **Faucet**: https://faucet.circle.com
 
 ## Project Structure
 
 ```
 knight-c/
-├── contracts/              # Solidity smart contracts
-│   ├── Treasury.sol       # Main treasury smart contract wallet
-│   ├── Pot.sol            # Departmental pot implementation
-│   ├── Flow.sol           # Automated flow execution
-│   └── libraries/         # Shared libraries and utilities
-├── frontend/              # React application
-│   ├── src/
-│   │   ├── components/   # UI components
-│   │   ├── hooks/        # Custom React hooks
-│   │   ├── lib/          # Utilities and helpers
-│   │   └── pages/        # Application pages
-│   └── public/
-├── scripts/               # Deployment and utility scripts
-├── test/                  # Smart contract tests
-├── docs/                  # Documentation
-└── hardhat.config.js      # Hardhat configuration
+├── contracts/
+│   └── TreasuryVault.sol          # Single unified contract
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── ApprovalQueue.tsx
+│       │   ├── ReallocationModal.tsx
+│       │   ├── AuditReport.tsx
+│       │   └── ScheduledFlows.tsx
+│       └── lib/
+│           ├── contracts.ts
+│           ├── utils.ts
+│           └── wagmi.ts
+├── scripts/
+│   ├── deploy.ts                  # Deploy TreasuryVault
+│   └── setup.ts                   # Create initial pots
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── DEPLOYMENT.md
+├── hardhat.config.ts
+└── README.md
 ```
 
-## Tech Stack
+## Features
 
-**Blockchain:**
-- Arc blockchain (EVM-compatible)
-- Solidity smart contracts
-- Hardhat development environment
+### ✅ TIER 1 (Built)
+- Unified Treasury
+- Instant Settlement (Arc)
+- Budget Enforcement
+- Multi-sig Approvals
+- Whitelist Protection
+- Budget Reallocation
+- Audit Trail
 
-**Frontend:**
-- React
-- Wagmi (Web3 React hooks)
-- Viem (Ethereum library)
-- TailwindCSS
-
-**Integration:**
-- Circle Gateway SDK (USD ↔ USDC on/off ramps)
-- Circle USDC (treasury operations)
-- Circle Yield (USYC for idle reserves)
-
-## 🚀 Quick Start
-
-### **✅ Already Deployed on Arc Testnet!**
-
-Your contracts are live and operational:
-
-```
-Treasury: 0x3940892e1e87C82fa7f314e5579045FCA370D092
-Flow:     0xd1094997FD7A74b93FfF1A377E7d4E2D0D216EC8
-
-Network:  Arc Testnet (Chain ID: 5042002)
-Explorer: https://testnet.arcscan.app
-```
-
-### Prerequisites
-
-- Node.js 20+ (run `nvm use 20`)
-- npm or yarn
-- MetaMask configured for Arc Testnet
-
-### Installation
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Compile contracts
-npx hardhat compile
-
-# 3. Run tests (create tests first)
-npx hardhat test
-
-# 4. Interact with deployed contracts
-npx hardhat console --network arcTestnet
-```
-
-### Running the Application
-
-```bash
-# 1. Check system status
-npx hardhat run scripts/check-budgets.ts --network arcTestnet
-
-# 2. Frontend (after configuration)
-cd frontend
-npm install
-npm run dev
-```
-
-### 📖 Full Documentation
-
-See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for:
-- Complete deployment history
-- Next steps and tutorials
-- Script examples
-- Security best practices
-
-## Demo Flow
-
-1. **Setup** - CFO deposits $10M USDC via Circle Gateway
-2. **Create Pots** - Engineering (Private), Marketing (Public), Operations (Public)
-3. **Public Payment** - Marketing pays $80K to São Paulo agency (0.4s settlement)
-4. **Private Payroll** - Engineering runs 50-employee payroll with Arc privacy
-5. **SalaryShield Mode** - Same payroll with temporal jitter (defense-in-depth)
-6. **Budget Enforcement** - Marketing prevented from overspending, requests reallocation
-7. **Scheduled Flows** - Automated bi-weekly payroll, monthly retainers, quarterly subscriptions
-8. **Instant Audit** - Generate Q4 report with 47 transactions in 5 seconds
-
-## Track 3 Alignment
-
-- Uses Circle Gateway & Arc
-- Automated treasury operations via smart contracts
-- Handles allocations (departmental Pots with enforced spending limits)
-- Handles distributions (payroll, vendor payments, recurring subscriptions, cross-border settlements)
-- Solves real treasury problems (data fragmentation, fraud, budget overruns, FX delays, compliance)
-- Code functional & deployed to Arc testnet
-
-## Annual Savings
-
-For a typical mid-sized multinational treasury:
-- **$250K+** in FX fees eliminated
-- **$280K** average fraud incident prevented
-- **$360K** in manual labor costs reduced
-- **$10M+** in excess cash deployed productively
-- **40 hours** per audit cycle saved
-
-**Total: $1M-$2M+ annually**
+### ⚠️ Roadmap
+- Scheduled Flows (Chainlink Automation)
+- Privacy Features (Arc privacy module)
+- Cross-chain USDC (Circle Gateway)
 
 ## License
 
 MIT
-
-## Contact
-
-Built for Track 3: Treasury & Payments Infrastructure
-
----
-
-**Knight-C: Military-grade treasury infrastructure for the modern enterprise.**
