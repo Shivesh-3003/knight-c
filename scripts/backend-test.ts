@@ -27,7 +27,8 @@ async function main() {
   await approveTx.wait();
   
   console.log("Depositing funds into treasury...");
-  await contract.depositToTreasury(depositAmount);
+  const depositTx = await contract.depositToTreasury(depositAmount);
+  await depositTx.wait();
   
   const treasuryBalance = await usdc.balanceOf(treasuryAddress);
   console.log(`Treasury balance: ${ethers.formatUnits(treasuryBalance, 6)} USDC`);
