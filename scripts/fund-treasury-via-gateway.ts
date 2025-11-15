@@ -211,7 +211,7 @@ function createBurnIntentTypedData(
   // Create the burn intent
   const burnIntent: BurnIntentMessage = {
     maxBlockHeight: BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'), // max uint256 for 7+ days validity
-    maxFee: BigInt(2_010000), // ~2.01 USDC max fee
+    maxFee: BigInt(100000), // 0.1 USDC max fee (actual fees are typically < 0.01 USDC)
     spec: {
       version: 1,
       sourceDomain: SEPOLIA_DOMAIN,
@@ -415,7 +415,7 @@ async function fundTreasuryViaGateway() {
   console.log(`    Source Domain: ${SEPOLIA_DOMAIN} (Sepolia)`);
   console.log(`    Destination Domain: ${ARC_DOMAIN} (Arc Testnet)`);
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
-  console.log(`    Max Fee: 2.01 USDC`);
+  console.log(`    Max Fee: 0.1 USDC`);
 
   const signature = await account.signTypedData(burnIntentTypedData);
   logSuccess('BurnIntent signed with EIP-712');
