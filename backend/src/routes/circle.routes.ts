@@ -50,4 +50,14 @@ router.get('/balance/:walletId', async (req, res) => {
   }
 });
 
+// Create treasury wallet
+router.post('/create-wallet', async (req, res) => {
+  try {
+    const result = await circleService.createTreasuryWallet();
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
