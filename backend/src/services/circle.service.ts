@@ -83,6 +83,21 @@ const treasuryAbi = [
   },
 ] as const;
 
+// Gateway Minter ABI - for receiving cross-chain USDC transfers
+// Based on Circle's standard message passing pattern
+const gatewayMinterAbi = [
+  {
+    name: 'receiveMessage',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'message', type: 'bytes' },
+      { name: 'attestation', type: 'bytes' },
+    ],
+    outputs: [{ type: 'bool' }],
+  },
+] as const;
+
 export interface GatewayDepositResult {
   depositHash: string;
   amount: string;
@@ -202,31 +217,49 @@ export class CircleService {
    */
   async getGatewayAttestation(messageHash: string): Promise<GatewayAttestationResult> {
     try {
-      // In production, you would call Circle Gateway API to get attestation
-      // For now, we return a mock response structure
-      //
-      // Example Circle Gateway API call:
-      // const response = await axios.get(
-      //   `https://api.circle.com/v1/gateway/attestations/${messageHash}`,
-      //   {
-      //     headers: {
-      //       'Authorization': `Bearer ${this.circleApiKey}`,
-      //       'Content-Type': 'application/json',
-      //     },
-      //   }
-      // );
+      if (!this.circleApiKey) {
+        throw new Error('Circle API key not configured. Set CIRCLE_API_KEY in .env file.');
+      }
 
       console.log(`Fetching attestation for message hash: ${messageHash}`);
-      console.log('⚠️  Gateway API integration not yet implemented');
-      console.log('⚠️  In production, this would call Circle Gateway API');
 
-      return {
-        messageHash,
-        status: 'pending_finality',
-        attestation: undefined,
-      };
-    } catch (error) {
-      throw new Error(`Get attestation failed: ${error}`);
+      // Circle Gateway API endpoint for attestations
+      const apiUrl = `https://api.circle.com/v1/w3s/transfers/${messageHash}`;
+
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${this.circleApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = response.data;
+
+      // Check if attestation is available
+      if (data.status === 'complete' && data.attestation) {
+        console.log('✅ Attestation retrieved successfully');
+        return { messageHash, status: 'ready', attestation: data.attestation };
+      } else if (data.status === 'pending_finality' || data.status === 'pending') {
+        console.log('⏳ Transfer pending finality on source chain');
+        return { messageHash, status: 'pending_finality', attestation: undefined };
+      } else {
+        console.log(`❌ Transfer status: ${data.status}`);
+        return { messageHash, status: 'not_found', attestation: undefined };
+      }
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 404) {
+          console.log('❌ Transfer not found - may not be finalized yet');
+          return { messageHash, status: 'not_found', attestation: undefined };
+        } else if (status === 401 || status === 403) {
+          throw new Error('Circle API authentication failed. Check your CIRCLE_API_KEY.');
+        }
+        throw new Error(
+          `Circle API error (${status}): ${error.response.data?.message || 'Unknown error'}`
+        );
+      }
+      throw new Error(`Get attestation failed: ${error.message || error}`);
     }
   }
 
@@ -234,37 +267,60 @@ export class CircleService {
    * Mint USDC on Arc using Gateway attestation
    * This completes the cross-chain transfer
    *
+   * @param message - Encoded message payload from Gateway
    * @param attestation - Cryptographic proof from Gateway
-   * @param amount - Amount to mint (must match attestation)
    * @returns Mint transaction details
    */
-  async mintOnArc(attestation: string, amount: string): Promise<GatewayMintResult> {
+  async mintOnArc(message: string, attestation: string): Promise<GatewayMintResult> {
     if (!this.account || !this.arcWalletClient) {
-      throw new Error('Private key not configured');
+      throw new Error('Private key not configured. Set PRIVATE_KEY in .env file.');
     }
 
     try {
-      // In production, you would submit attestation to Gateway Minter contract
-      // For now, we return a mock response
-      //
-      // Example transaction:
-      // const mintHash = await this.arcWalletClient.writeContract({
-      //   address: GATEWAY_MINTER_ADDRESS,
-      //   abi: gatewayMinterAbi,
-      //   functionName: 'mint',
-      //   args: [attestation],
-      // });
+      console.log('Submitting attestation to Gateway Minter on Arc...');
 
-      console.log('⚠️  Gateway Minter integration not yet implemented');
-      console.log('⚠️  In production, this would submit attestation to Gateway Minter on Arc');
+      // Submit message and attestation to Gateway Minter contract
+      const mintHash = await this.arcWalletClient.writeContract({
+        address: GATEWAY_MINTER_ADDRESS,
+        abi: gatewayMinterAbi,
+        functionName: 'receiveMessage',
+        args: [message as `0x${string}`, attestation as `0x${string}`],
+      });
 
-      return {
-        mintHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
-        amount,
-        status: 'success',
-      };
-    } catch (error) {
-      throw new Error(`Mint on Arc failed: ${error}`);
+      console.log(`Minting transaction submitted: ${mintHash}`);
+
+      // Wait for transaction confirmation
+      const receipt = await this.arcPublicClient.waitForTransactionReceipt({ hash: mintHash });
+
+      if (receipt.status === 'success') {
+        console.log('✅ USDC minted successfully on Arc!');
+
+        // Extract amount from logs if possible
+        let amount = '0';
+        try {
+          const transferEvent = receipt.logs.find(
+            (log) =>
+              log.topics[0] ===
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+          );
+          if (transferEvent && transferEvent.data) {
+            amount = (BigInt(transferEvent.data) / BigInt(1_000_000)).toString();
+          }
+        } catch (decodeError) {
+          console.log('Note: Could not decode transfer amount from logs');
+        }
+
+        return { mintHash, amount, status: 'success' };
+      } else {
+        throw new Error('Mint transaction failed');
+      }
+    } catch (error: any) {
+      if (error.message?.includes('already processed')) {
+        throw new Error('This attestation has already been used to mint USDC');
+      } else if (error.message?.includes('invalid attestation')) {
+        throw new Error('Invalid attestation signature');
+      }
+      throw new Error(`Mint on Arc failed: ${error.message || error}`);
     }
   }
 

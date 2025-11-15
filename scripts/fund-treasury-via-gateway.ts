@@ -24,6 +24,7 @@ import { config } from 'dotenv';
 import { createWalletClient, createPublicClient, http, parseUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import axios from 'axios';
 
 // Load environment variables
 config();
@@ -60,7 +61,7 @@ const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
 const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
 const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
 const TREASURY_VAULT = (process.env.TREASURY_CONTRACT_ADDRESS || process.env.VITE_TREASURY_ADDRESS) as Address;
-const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '1000'; // 1000 USDC default
+const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '2'; // 2 USDC default to minimize faucet usage + gas
 
 // ABIs
 const erc20Abi = [
@@ -106,6 +107,19 @@ const treasuryAbi = [
   },
 ] as const;
 
+const gatewayMinterAbi = [
+  {
+    name: 'receiveMessage',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'message', type: 'bytes' },
+      { name: 'attestation', type: 'bytes' },
+    ],
+    outputs: [{ type: 'bool' }],
+  },
+] as const;
+
 // Utility functions
 function logStep(step: string, message: string) {
   console.log(`\n🔷 ${step}: ${message}\n`);
@@ -121,6 +135,55 @@ function logWarning(message: string) {
 
 function logError(message: string) {
   console.error(`  ❌ ${message}`);
+}
+
+async function pollForAttestation(
+  messageHash: string,
+  maxAttempts: number = 30,
+  intervalSeconds: number = 30
+): Promise<{ message: string; attestation: string }> {
+  const circleApiKey = process.env.CIRCLE_API_KEY;
+  if (!circleApiKey) {
+    throw new Error('CIRCLE_API_KEY not found in .env file');
+  }
+
+  console.log(`  Polling for attestation (max ${maxAttempts} attempts, ${intervalSeconds}s interval)...`);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const apiUrl = `https://api.circle.com/v1/w3s/transfers/${messageHash}`;
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${circleApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = response.data;
+
+      if (data.status === 'complete' && data.attestation && data.message) {
+        logSuccess('Attestation received!');
+        return { message: data.message, attestation: data.attestation };
+      } else {
+        console.log(`  Attempt ${attempt}/${maxAttempts}: Status = ${data.status || 'pending'}`);
+      }
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        console.log(`  Attempt ${attempt}/${maxAttempts}: Transfer not yet finalized`);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new Error('Circle API authentication failed. Check your CIRCLE_API_KEY.');
+      } else {
+        console.log(`  Attempt ${attempt}/${maxAttempts}: ${error.message}`);
+      }
+    }
+
+    if (attempt < maxAttempts) {
+      console.log(`  Waiting ${intervalSeconds} seconds before next attempt...`);
+      await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
+    }
+  }
+
+  throw new Error(`Attestation not received after ${maxAttempts} attempts.`);
 }
 
 async function fundTreasuryViaGateway() {
@@ -159,6 +222,8 @@ async function fundTreasuryViaGateway() {
     transport: http(),
   });
 
+  let depositHash: `0x${string}`;
+
   try {
     // Check Sepolia USDC balance
     const sepoliaBalance = await sepoliaPublic.readContract({
@@ -190,7 +255,7 @@ async function fundTreasuryViaGateway() {
 
     // 1B: Deposit USDC
     console.log('\n  Depositing USDC to Gateway Wallet...');
-    const depositHash = await sepoliaWallet.writeContract({
+    depositHash = await sepoliaWallet.writeContract({
       address: GATEWAY_WALLET,
       abi: gatewayWalletAbi,
       functionName: 'deposit',
@@ -206,25 +271,22 @@ async function fundTreasuryViaGateway() {
     process.exit(1);
   }
 
-  // ===== STEP 2: Wait for Gateway (Manual Step) =====
-  logStep('STEP 2', 'Gateway Processing');
-  console.log('  Gateway will automatically:');
-  console.log('  1. Detect deposit finality on Sepolia');
-  console.log('  2. Credit your unified USDC balance');
-  console.log('  3. Enable instant transfers to Arc');
+  // ===== STEP 2: Fetch Attestation =====
+  logStep('STEP 2', 'Fetching Gateway Attestation');
+  console.log('  Waiting for Sepolia finality and Gateway attestation...');
+  console.log('  This typically takes 12-15 minutes (~32 blocks on Sepolia)');
 
-  logWarning('MANUAL ACTION REQUIRED:');
-  console.log('  Use Circle Gateway dashboard or API to transfer USDC to Arc');
-  console.log('  Destination address: ' + account.address);
-  console.log('\n  Press any key to continue after Gateway transfer completes...');
+  let attestationData: { message: string; attestation: string };
+  try {
+    attestationData = await pollForAttestation(depositHash);
+  } catch (error) {
+    logError(`Failed to retrieve attestation: ${error}`);
+    logWarning('You can retry later using the transaction hash: ' + depositHash);
+    process.exit(1);
+  }
 
-  // Wait for user input
-  await new Promise((resolve) => {
-    process.stdin.once('data', () => resolve(null));
-  });
-
-  // ===== STEP 3: Deposit to TreasuryVault on Arc =====
-  logStep('STEP 3', 'Funding TreasuryVault on Arc');
+  // ===== STEP 3: Minting USDC on Arc =====
+  logStep('STEP 3', 'Minting USDC on Arc');
 
   const arcWallet = createWalletClient({
     account,
@@ -236,6 +298,27 @@ async function fundTreasuryViaGateway() {
     chain: arcTestnet,
     transport: http('https://rpc.testnet.arc.network'),
   });
+
+  try {
+    console.log('\n  Submitting attestation to Gateway Minter on Arc...');
+    const mintHash = await arcWallet.writeContract({
+      address: GATEWAY_MINTER,
+      abi: gatewayMinterAbi,
+      functionName: 'receiveMessage',
+      args: [attestationData.message as `0x${string}`, attestationData.attestation as `0x${string}`],
+    });
+
+    console.log(`  Minting transaction submitted: ${mintHash}`);
+    await arcPublic.waitForTransactionReceipt({ hash: mintHash });
+    logSuccess(`USDC minted on Arc: https://testnet.arcscan.app/tx/${mintHash}`);
+  } catch (error) {
+    logError(`Minting on Arc failed: ${error}`);
+    logWarning('Attestation may have already been used or invalid');
+    process.exit(1);
+  }
+
+  // ===== STEP 4: Deposit to TreasuryVault on Arc =====
+  logStep('STEP 4', 'Funding TreasuryVault on Arc');
 
   try {
     // Check Arc USDC balance

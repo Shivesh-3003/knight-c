@@ -91,16 +91,16 @@ router.get('/gateway/attestation/:messageHash', async (req, res) => {
  */
 router.post('/gateway/mint', async (req, res) => {
   try {
-    const { attestation, amount } = req.body;
+    const { message, attestation } = req.body;
 
-    if (!attestation || !amount) {
+    if (!message || !attestation) {
       return res.status(400).json({
         success: false,
-        error: 'Attestation and amount are required',
+        error: 'Message and attestation are required',
       });
     }
 
-    const result = await circleService.mintOnArc(attestation, amount);
+    const result = await circleService.mintOnArc(message, attestation);
 
     res.json({
       success: true,
