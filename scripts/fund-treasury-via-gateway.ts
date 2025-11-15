@@ -280,15 +280,16 @@ async function submitBurnIntent(
     console.log('\n  API Response:');
     console.log(JSON.stringify(result, null, 2));
 
-    if (!result.success) {
-      throw new Error(`Gateway API returned success=false: ${result.message || 'Unknown error'}`);
-    }
-
+    // Gateway API returns attestation and signature directly (no "success" field)
     if (!result.attestation || !result.signature) {
       throw new Error(`Invalid response from Gateway API: missing attestation or signature. Response: ${JSON.stringify(result)}`);
     }
 
     logSuccess('Attestation received from Gateway API!');
+    console.log(`  Transfer ID: ${result.transferId}`);
+    console.log(`  Total Fee: ${result.fees?.total} ${result.fees?.token}`);
+    console.log(`  Expiration Block: ${result.expirationBlock}`);
+
     return {
       attestation: result.attestation,
       signature: result.signature,
