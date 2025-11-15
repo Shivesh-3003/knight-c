@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowDownToLine, Loader2, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
-import { depositFiat, getTreasuryBalance, pollTransferStatus } from "@/lib/api";
+import { depositToGateway, getTreasuryBalance, pollGatewayAttestation } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 import { getExplorerAddressUrl } from "@/lib/utils";
 import { treasuryVaultAddress } from "@/lib/contract";
@@ -55,7 +55,7 @@ export function TreasuryFunding() {
 
     try {
       // Call Circle Gateway API to deposit fiat → USDC to contract
-      const response = await depositFiat(parseFloat(amount), "USD", "contract");
+      const response = await depositToGateway(amount);
 
       if (!response.success || !response.data) {
         throw new Error(response.error || "Deposit failed");
@@ -70,7 +70,7 @@ export function TreasuryFunding() {
       });
 
       // Poll for transfer completion
-      const statusResponse = await pollTransferStatus(newTransferId);
+      const statusResponse = await pollGatewayAttestation(newTransferId);
 
       if (statusResponse.success && statusResponse.data && statusResponse.data.status === "complete") {
         setTransferStatus("complete");
