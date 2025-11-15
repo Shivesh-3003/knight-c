@@ -6,42 +6,239 @@ const router = Router();
 const circleService = new CircleService();
 const treasuryService = new TreasuryService();
 
-// On-ramp: USD → USDC
-router.post('/mint', async (req, res) => {
+// ===== CIRCLE GATEWAY ENDPOINTS =====
+// These endpoints handle cross-chain USDC transfers via Circle Gateway
+// NOT fiat on-ramp - handles USDC movement between Ethereum Sepolia and Arc Testnet
+
+/**
+ * POST /api/circle/gateway/deposit
+ * Deposit USDC to Gateway Wallet on Sepolia
+ * Initiates cross-chain transfer flow
+ */
+router.post('/gateway/deposit', async (req, res) => {
   try {
-    const { amount, walletId } = req.body;
-    const result = await circleService.mintUSDC(amount, walletId);
-    res.json({ success: true, data: result });
+    const { amount } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount is required',
+      });
+    }
+
+    const result = await circleService.depositToGateway(amount);
+
+    res.json({
+      success: true,
+      data: {
+        depositHash: result.depositHash,
+        amount: result.amount,
+        status: result.status,
+        estimatedFinality: result.estimatedFinality,
+        chain: 'Ethereum Sepolia',
+        nextStep: 'Wait for finality (~12-15 minutes), then fetch attestation',
+      },
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
-// Off-ramp: USDC → USD
-router.post('/redeem', async (req, res) => {
+/**
+ * GET /api/circle/gateway/attestation/:messageHash
+ * Get Gateway attestation for cross-chain transfer
+ * Available after source chain finality
+ */
+router.get('/gateway/attestation/:messageHash', async (req, res) => {
   try {
-    const { amount, walletId, bankAccountId } = req.body;
-    const result = await circleService.redeemUSDC(amount, walletId, bankAccountId);
-    res.json({ success: true, data: result });
+    const { messageHash } = req.params;
+
+    if (!messageHash) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message hash is required',
+      });
+    }
+
+    const result = await circleService.getGatewayAttestation(messageHash);
+
+    res.json({
+      success: true,
+      data: {
+        messageHash: result.messageHash,
+        attestation: result.attestation,
+        status: result.status,
+        nextStep: result.attestation
+          ? 'Submit attestation to mint USDC on Arc'
+          : 'Wait for finality on Sepolia',
+      },
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
-// Get wallet balance
-router.get('/balance/:walletId', async (req, res) => {
+/**
+ * POST /api/circle/gateway/mint
+ * Mint USDC on Arc using Gateway attestation
+ * Completes cross-chain transfer
+ */
+router.post('/gateway/mint', async (req, res) => {
   try {
-    const { walletId } = req.params;
-    const result = await circleService.getWalletBalance(walletId);
-    res.json({ success: true, data: result });
+    const { attestation, amount } = req.body;
+
+    if (!attestation || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Attestation and amount are required',
+      });
+    }
+
+    const result = await circleService.mintOnArc(attestation, amount);
+
+    res.json({
+      success: true,
+      data: {
+        mintHash: result.mintHash,
+        amount: result.amount,
+        status: result.status,
+        chain: 'Arc Testnet',
+        nextStep: 'USDC is now available on Arc - deposit to TreasuryVault',
+      },
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
-// ===== FRONTEND-REQUIRED ENDPOINTS =====
+/**
+ * POST /api/circle/treasury/deposit
+ * Deposit USDC to TreasuryVault on Arc
+ * Must be called after minting USDC on Arc via Gateway
+ */
+router.post('/treasury/deposit', async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
 
-// Get treasury balance (on-chain)
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount is required',
+      });
+    }
+
+    if (!treasuryAddress) {
+      return res.status(500).json({
+        success: false,
+        error: 'TREASURY_CONTRACT_ADDRESS not configured in environment',
+      });
+    }
+
+    const depositHash = await circleService.depositToTreasury(
+      amount,
+      treasuryAddress as `0x${string}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        depositHash,
+        amount,
+        treasuryAddress,
+        chain: 'Arc Testnet',
+        status: 'complete',
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/balance/sepolia/:address
+ * Get USDC balance on Ethereum Sepolia
+ */
+router.get('/balance/sepolia/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getSepoliaBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Ethereum Sepolia',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/balance/arc/:address
+ * Get USDC balance on Arc Testnet
+ */
+router.get('/balance/arc/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getArcBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Arc Testnet',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/treasury-balance
+ * Get TreasuryVault contract balance on Arc (on-chain)
+ */
 router.get('/treasury-balance', async (req, res) => {
   try {
     const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
@@ -58,132 +255,8 @@ router.get('/treasury-balance', async (req, res) => {
         balance,
         contractAddress: treasuryAddress,
         network: 'arc-testnet',
-        currency: 'USDC'
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Deposit USD/USDC to TreasuryVault contract via Circle Mint
-router.post('/deposit', async (req, res) => {
-  try {
-    const { amount } = req.body;
-    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
-
-    if (!treasuryAddress) {
-      throw new Error('TREASURY_CONTRACT_ADDRESS not configured');
-    }
-
-    // Transfer USDC from Circle wallet to TreasuryVault contract
-    const result = await circleService.depositToContract(amount, treasuryAddress);
-
-    res.json({
-      success: true,
-      data: {
-        transferId: result.id,
-        amount,
-        status: result.status || 'pending',
-        destination: treasuryAddress,
-        chain: 'ARC',
-        estimatedCompletion: new Date(Date.now() + 60000).toISOString()
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Withdraw USDC → fiat
-router.post('/withdraw', async (req, res) => {
-  try {
-    const { amount, bankAccountId } = req.body;
-    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
-
-    if (!treasuryAddress) {
-      throw new Error('TREASURY_CONTRACT_ADDRESS not configured');
-    }
-
-    if (!bankAccountId) {
-      throw new Error('bankAccountId is required for withdrawals');
-    }
-
-    // Withdraw USDC from Circle wallet to bank account
-    const result = await circleService.withdrawFromContract(amount, bankAccountId, treasuryAddress);
-
-    res.json({
-      success: true,
-      data: {
-        transferId: result.id,
-        amount,
-        status: result.status || 'pending',
-        bankAccountId
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Transfer USDC to Arc contract
-router.post('/transfer-to-arc', async (req, res) => {
-  try {
-    const { amount } = req.body;
-
-    // TODO: Implement actual transfer to Arc logic
-    res.json({
-      success: true,
-      data: {
-        transferId: `arc_${Date.now()}`,
-        amount,
-        status: 'pending'
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get transfer status
-router.get('/transfer-status/:transferId', async (req, res) => {
-  try {
-    const { transferId } = req.params;
-
-    // Query Circle API for transfer status
-    const result = await circleService.getTransferStatus(transferId);
-
-    res.json({
-      success: true,
-      data: {
-        transferId: result.id,
-        status: result.status,
-        source: result.source,
-        destination: result.destination,
-        amount: result.amount,
-        createDate: result.createDate,
-        updateDate: result.updateDate
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get Circle wallet balance (available USDC for deposits)
-router.get('/balance', async (req, res) => {
-  try {
-    const result = await circleService.getCircleWalletBalance();
-
-    res.json({
-      success: true,
-      data: {
-        walletId: result.id,
-        balance: result.balances?.[0]?.amount || '0',
         currency: 'USDC',
-        blockchain: result.blockchain,
-        address: result.address
-      }
+      },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
