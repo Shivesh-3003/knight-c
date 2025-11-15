@@ -7,6 +7,7 @@ const navigation = [
   { name: "Approvals", href: "/approvals", icon: CheckCircle2 },
   { name: "Scheduled Flows", href: "/scheduled", icon: Calendar },
   { name: "Compliance", href: "/compliance", icon: Shield },
+  { name: "WalletGateway", href: "/WalletGateway", icon: Landmark },
 ];
 
 export function Sidebar() {
