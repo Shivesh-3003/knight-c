@@ -2,7 +2,7 @@
 // Circle Gateway Service - Cross-chain USDC transfers via Circle Gateway
 
 import { createPublicClient, createWalletClient, http, parseUnits, parseAbi, type Address } from 'viem';
-import { sepolia } from 'viem/chains';
+import { sepolia, arbitrumSepolia, baseSepolia, avalancheFuji, polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import axios from 'axios';
 
@@ -32,11 +32,44 @@ const arcTestnet = {
   testnet: true,
 } as const;
 
-// Contract Addresses - loaded from environment variables
-const SEPOLIA_USDC_ADDRESS = (process.env.SEPOLIA_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238') as Address;
+// Base Sepolia with Flashblocks RPC
+const baseSepoliaWithFlashblocks = {
+  ...baseSepolia,
+  rpcUrls: {
+    ...baseSepolia.rpcUrls,
+    default: {
+      http: ['https://sepolia-preconf.base.org'], // Flashblocks-aware RPC
+    },
+  },
+} as const;
+
+// Chain-specific USDC addresses
+const USDC_ADDRESSES: Record<number, Address> = {
+  [sepolia.id]: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Ethereum Sepolia
+  [arbitrumSepolia.id]: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Arbitrum Sepolia
+  [baseSepolia.id]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
+  [avalancheFuji.id]: '0x5425890298aed601595a70ab815c96711a31bc65', // Avalanche Fuji
+  [polygonAmoy.id]: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', // Polygon Amoy
+  [arcTestnet.id]: '0x3600000000000000000000000000000000000000', // Arc Testnet
+};
+
+// Supported chains mapping
+const SUPPORTED_CHAINS: Record<string, any> = {
+  sepolia,
+  arbitrum: arbitrumSepolia,
+  base: baseSepoliaWithFlashblocks,
+  avalanche: avalancheFuji,
+  polygon: polygonAmoy,
+  arc: arcTestnet,
+};
+
+// Gateway Contract Addresses (same across all testnets)
 const GATEWAY_WALLET_ADDRESS = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9') as Address;
-const ARC_USDC_ADDRESS = (process.env.USDC_TOKEN_ADDRESS || process.env.VITE_USDC_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
 const GATEWAY_MINTER_ADDRESS = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
+
+// Legacy environment variables for backward compatibility
+const SEPOLIA_USDC_ADDRESS = USDC_ADDRESSES[sepolia.id];
+const ARC_USDC_ADDRESS = USDC_ADDRESSES[arcTestnet.id];
 
 // ABIs - Using parseAbi for better type inference in viem v2
 const erc20Abi = parseAbi([
@@ -292,6 +325,73 @@ export class CircleService {
     } catch (error) {
       throw new Error(`Get Arc balance failed: ${error}`);
     }
+  }
+
+  /**
+   * Get USDC balance on any supported chain
+   * @param chainName - Chain name (sepolia, arbitrum, base, avalanche, polygon, arc)
+   * @param address - Wallet address to check
+   */
+  async getChainBalance(chainName: string, address: Address): Promise<string> {
+    try {
+      const chain = SUPPORTED_CHAINS[chainName.toLowerCase()];
+      if (!chain) {
+        throw new Error(`Unsupported chain: ${chainName}. Supported chains: ${Object.keys(SUPPORTED_CHAINS).join(', ')}`);
+      }
+
+      const usdcAddress = USDC_ADDRESSES[chain.id];
+      if (!usdcAddress) {
+        throw new Error(`USDC address not found for chain: ${chainName}`);
+      }
+
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(),
+      });
+
+      const balance = await publicClient.readContract({
+        address: usdcAddress,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address],
+      });
+
+      return (Number(balance) / 1_000_000).toString(); // Convert from 6 decimals
+    } catch (error) {
+      throw new Error(`Get ${chainName} balance failed: ${error}`);
+    }
+  }
+
+  /**
+   * Get USDC balance on Base Sepolia
+   * @param address - Wallet address to check
+   */
+  async getBaseBalance(address: Address): Promise<string> {
+    return this.getChainBalance('base', address);
+  }
+
+  /**
+   * Get USDC balance on Arbitrum Sepolia
+   * @param address - Wallet address to check
+   */
+  async getArbitrumBalance(address: Address): Promise<string> {
+    return this.getChainBalance('arbitrum', address);
+  }
+
+  /**
+   * Get USDC balance on Polygon Amoy
+   * @param address - Wallet address to check
+   */
+  async getPolygonBalance(address: Address): Promise<string> {
+    return this.getChainBalance('polygon', address);
+  }
+
+  /**
+   * Get USDC balance on Avalanche Fuji
+   * @param address - Wallet address to check
+   */
+  async getAvalancheBalance(address: Address): Promise<string> {
+    return this.getChainBalance('avalanche', address);
   }
 
   /**

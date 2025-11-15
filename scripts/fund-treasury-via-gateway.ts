@@ -1,78 +1,75 @@
 #!/usr/bin/env ts-node
 /**
- * Fund Treasury Via Gateway Script (CORRECTED)
+ * Fund Treasury Via Gateway Script - Multi-Chain Support
  *
  * Complete end-to-end script for funding the Knight-C TreasuryVault
- * using Circle Gateway cross-chain USDC transfers.
+ * using Circle Gateway cross-chain USDC transfers from ANY supported chain.
  *
  * Flow:
- * 1. Deposit USDC to Gateway Wallet on Ethereum Sepolia (creates unified balance)
- * 2. Wait for finality (~12-15 minutes)
+ * 1. Deposit USDC to Gateway Wallet on source chain (creates unified balance)
+ * 2. Wait for finality (~12-15 minutes, varies by chain)
  * 3. Create and sign BurnIntent to transfer from unified balance to Arc
  * 4. Submit BurnIntent to Circle Gateway API to get attestation
  * 5. Call gatewayMint on Gateway Minter contract on Arc
  * 6. Deposit USDC to TreasuryVault on Arc
  *
+ * Supported Source Chains:
+ * - sepolia (Ethereum Sepolia) - default
+ * - base (Base Sepolia)
+ * - arbitrum (Arbitrum Sepolia)
+ * - polygon (Polygon Amoy)
+ * - avalanche (Avalanche Fuji)
+ *
+ * Usage:
+ *   SOURCE_CHAIN=base ts-node scripts/fund-treasury-via-gateway.ts
+ *   SOURCE_CHAIN=arbitrum DEPOSIT_AMOUNT=10 ts-node scripts/fund-treasury-via-gateway.ts
+ *
  * Prerequisites:
- * - USDC on Ethereum Sepolia (get from https://faucet.circle.com)
- * - Sepolia ETH for gas (get from https://sepolia-faucet.com)
+ * - USDC on source chain (get from https://faucet.circle.com)
+ * - Native gas token on source chain (ETH for Sepolia/Base/Arbitrum, AVAX for Avalanche, POL for Polygon)
  * - USDC on Arc for gas (USDC is the gas token on Arc)
  * - PRIVATE_KEY in .env
  * - TREASURY_CONTRACT_ADDRESS in .env
  */
 
 import { config } from 'dotenv';
-import { createWalletClient, createPublicClient, http, parseUnits, pad, zeroAddress, type Address, hexToNumber } from 'viem';
-import { sepolia } from 'viem/chains';
+import { createWalletClient, createPublicClient, http, parseUnits, pad, type Address, hexToNumber } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { randomBytes } from 'crypto';
+import {
+  getChainConfig,
+  validateChainPair,
+  DESTINATION_CHAIN,
+  GATEWAY_WALLET_ADDRESS,
+  GATEWAY_MINTER_ADDRESS,
+  type SourceChain,
+  SUPPORTED_SOURCE_CHAINS,
+} from './chain-config';
 
 // Load environment variables
 config();
 
-// Arc Testnet Chain Configuration
-const arcTestnet = {
-  id: 5042002,
-  name: 'Arc Testnet',
-  network: 'arc-testnet',
-  nativeCurrency: {
-    decimals: 6,
-    name: 'USDC',
-    symbol: 'USDC',
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://rpc.testnet.arc.network'],
-      webSocket: ['wss://rpc.testnet.arc.network'],
-    },
-    public: {
-      http: ['https://rpc.testnet.arc.network'],
-      webSocket: ['wss://rpc.testnet.arc.network'],
-    },
-  },
-  blockExplorers: {
-    default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },
-  },
-  testnet: true,
-} as const;
-
 // Configuration from environment variables
-const SEPOLIA_USDC = (process.env.SEPOLIA_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238') as Address;
-const GATEWAY_WALLET = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9') as Address;
-const ARC_USDC = (process.env.VITE_USDC_ADDRESS || process.env.USDC_TOKEN_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
-const GATEWAY_MINTER = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
+const SOURCE_CHAIN = (process.env.SOURCE_CHAIN || 'sepolia') as SourceChain;
 const TREASURY_VAULT = (process.env.TREASURY_CONTRACT_ADDRESS || process.env.VITE_TREASURY_ADDRESS) as Address;
 const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '5'; // 5 USDC default (need amount + 2 USDC min fee)
+const SKIP_FINALITY_WAIT = process.env.SKIP_FINALITY_WAIT === 'true';
 
-// Gateway Domain IDs (from Circle Gateway documentation)
-const SEPOLIA_DOMAIN = 0;
-const ARC_DOMAIN = 26;
+// Validate chain configuration
+if (!SUPPORTED_SOURCE_CHAINS.includes(SOURCE_CHAIN)) {
+  console.error(`❌ Error: Unsupported source chain "${SOURCE_CHAIN}"`);
+  console.error(`   Supported chains: ${SUPPORTED_SOURCE_CHAINS.join(', ')}`);
+  process.exit(1);
+}
+
+validateChainPair(SOURCE_CHAIN, DESTINATION_CHAIN);
+
+// Get chain configurations
+const sourceConfig = getChainConfig(SOURCE_CHAIN);
+const destConfig = getChainConfig(DESTINATION_CHAIN);
 
 // Gateway API endpoint
 const GATEWAY_API_URL = 'https://gateway-api-testnet.circle.com/v1/transfer';
-
-// Testing flags
-const SKIP_FINALITY_WAIT = process.env.SKIP_FINALITY_WAIT === 'true';
 
 // ABIs
 const erc20Abi = [
@@ -217,16 +214,16 @@ function createBurnIntentTypedData(
     maxFee: BigInt(2_010000), // 2.01 USDC max fee (Circle Gateway requires minimum 2.0001 USDC)
     spec: {
       version: 1,
-      sourceDomain: SEPOLIA_DOMAIN,
-      destinationDomain: ARC_DOMAIN,
-      sourceContract: addressToBytes32(GATEWAY_WALLET),
-      destinationContract: addressToBytes32(GATEWAY_MINTER),
-      sourceToken: addressToBytes32(SEPOLIA_USDC),
-      destinationToken: addressToBytes32(ARC_USDC),
+      sourceDomain: sourceConfig.domainId,
+      destinationDomain: destConfig.domainId,
+      sourceContract: addressToBytes32(GATEWAY_WALLET_ADDRESS),
+      destinationContract: addressToBytes32(GATEWAY_MINTER_ADDRESS),
+      sourceToken: addressToBytes32(sourceConfig.usdcAddress),
+      destinationToken: addressToBytes32(destConfig.usdcAddress),
       sourceDepositor: addressToBytes32(userAddress),
       destinationRecipient: addressToBytes32(userAddress),
       sourceSigner: addressToBytes32(userAddress),
-      destinationCaller: addressToBytes32(zeroAddress),
+      destinationCaller: addressToBytes32(pad('0x0')),
       value: amount,
       salt: `0x${randomBytes(32).toString('hex')}`,
       hookData: '0x' as `0x${string}`,
@@ -315,99 +312,98 @@ async function fundTreasuryViaGateway() {
   const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`);
   const depositAmountUnits = parseUnits(DEPOSIT_AMOUNT, 6);
 
-  console.log('\n╔════════════════════════════════════════════════════════════╗');
-  console.log('║   Circle Gateway Treasury Funding Script (CORRECTED)      ║');
-  console.log('╚════════════════════════════════════════════════════════════╝');
+  console.log('\n╔════════════════════════════════════════════════════════════════════╗');
+  console.log('║   Circle Gateway Treasury Funding Script - Multi-Chain Support    ║');
+  console.log('╚════════════════════════════════════════════════════════════════════╝');
   console.log(`\n  Wallet Address: ${account.address}`);
   console.log(`  Treasury Address: ${TREASURY_VAULT}`);
   console.log(`  Deposit Amount: ${DEPOSIT_AMOUNT} USDC`);
+  console.log(`\n  Source Chain: ${sourceConfig.name} (Domain ${sourceConfig.domainId})`);
+  console.log(`  Destination Chain: ${destConfig.name} (Domain ${destConfig.domainId})`);
   console.log(`\n  Contract Addresses:`);
-  console.log(`    Sepolia USDC: ${SEPOLIA_USDC}`);
-  console.log(`    Gateway Wallet: ${GATEWAY_WALLET}`);
-  console.log(`    Arc USDC: ${ARC_USDC}`);
-  console.log(`    Gateway Minter: ${GATEWAY_MINTER}`);
-  console.log(`\n  Gateway Domains:`);
-  console.log(`    Sepolia: ${SEPOLIA_DOMAIN}`);
-  console.log(`    Arc Testnet: ${ARC_DOMAIN}\n`);
+  console.log(`    ${sourceConfig.name} USDC: ${sourceConfig.usdcAddress}`);
+  console.log(`    ${destConfig.name} USDC: ${destConfig.usdcAddress}`);
+  console.log(`    Gateway Wallet: ${GATEWAY_WALLET_ADDRESS}`);
+  console.log(`    Gateway Minter: ${GATEWAY_MINTER_ADDRESS}\n`);
 
-  // ===== STEP 1: Deposit on Sepolia to create unified balance =====
-  logStep('STEP 1', 'Depositing USDC to Gateway Wallet on Sepolia');
+  // ===== STEP 1: Deposit on source chain to create unified balance =====
+  logStep('STEP 1', `Depositing USDC to Gateway Wallet on ${sourceConfig.name}`);
 
-  const sepoliaWallet = createWalletClient({
+  const sourceWallet = createWalletClient({
     account,
-    chain: sepolia,
+    chain: sourceConfig.chain,
     transport: http(),
   });
 
-  const sepoliaPublic = createPublicClient({
-    chain: sepolia,
+  const sourcePublic = createPublicClient({
+    chain: sourceConfig.chain,
     transport: http(),
   });
 
   let depositHash: `0x${string}`;
 
   try {
-    // Check Sepolia USDC balance
-    const sepoliaBalance = await sepoliaPublic.readContract({
-      address: SEPOLIA_USDC,
+    // Check source chain USDC balance
+    const sourceBalance = await sourcePublic.readContract({
+      address: sourceConfig.usdcAddress,
       abi: erc20Abi,
       functionName: 'balanceOf',
       args: [account.address],
     });
 
-    const sepoliaBalanceFormatted = (Number(sepoliaBalance) / 1_000_000).toString();
-    console.log(`  Current Sepolia USDC Balance: ${sepoliaBalanceFormatted} USDC`);
+    const sourceBalanceFormatted = (Number(sourceBalance) / 1_000_000).toString();
+    console.log(`  Current ${sourceConfig.name} USDC Balance: ${sourceBalanceFormatted} USDC`);
 
-    if (Number(sepoliaBalance) < Number(depositAmountUnits)) {
-      logError(`Insufficient USDC balance on Sepolia. Need ${DEPOSIT_AMOUNT} USDC, have ${sepoliaBalanceFormatted} USDC`);
-      logWarning('Get testnet USDC from: https://faucet.circle.com');
+    if (Number(sourceBalance) < Number(depositAmountUnits)) {
+      logError(`Insufficient USDC balance on ${sourceConfig.name}. Need ${DEPOSIT_AMOUNT} USDC, have ${sourceBalanceFormatted} USDC`);
+      logWarning(`Get testnet USDC from: ${sourceConfig.faucetUrl || 'https://faucet.circle.com'}`);
       process.exit(1);
     }
 
     // 1A: Approve Gateway Wallet
     console.log('\n  Approving Gateway Wallet...');
-    const approvalHash = await sepoliaWallet.writeContract({
-      address: SEPOLIA_USDC,
+    const approvalHash = await sourceWallet.writeContract({
+      address: sourceConfig.usdcAddress,
       abi: erc20Abi,
       functionName: 'approve',
-      args: [GATEWAY_WALLET, depositAmountUnits],
+      args: [GATEWAY_WALLET_ADDRESS, depositAmountUnits],
     });
-    await sepoliaPublic.waitForTransactionReceipt({ hash: approvalHash });
-    logSuccess(`Approved: https://sepolia.etherscan.io/tx/${approvalHash}`);
+    await sourcePublic.waitForTransactionReceipt({ hash: approvalHash });
+    logSuccess(`Approved: ${sourceConfig.explorerUrl}/tx/${approvalHash}`);
 
     // 1B: Deposit USDC to Gateway Wallet (creates unified balance)
     console.log('\n  Depositing USDC to Gateway Wallet...');
-    depositHash = await sepoliaWallet.writeContract({
-      address: GATEWAY_WALLET,
+    depositHash = await sourceWallet.writeContract({
+      address: GATEWAY_WALLET_ADDRESS,
       abi: gatewayWalletAbi,
       functionName: 'deposit',
-      args: [SEPOLIA_USDC, depositAmountUnits],
+      args: [sourceConfig.usdcAddress, depositAmountUnits],
     });
-    await sepoliaPublic.waitForTransactionReceipt({ hash: depositHash });
-    logSuccess(`Deposited: https://sepolia.etherscan.io/tx/${depositHash}`);
+    await sourcePublic.waitForTransactionReceipt({ hash: depositHash });
+    logSuccess(`Deposited: ${sourceConfig.explorerUrl}/tx/${depositHash}`);
     logSuccess('Unified USDC balance created!');
 
-    logWarning('Waiting for finality (~12-15 minutes)...');
+    logWarning('Waiting for finality...');
     console.log('  This wait is front-loaded. Once finalized, future transfers will be instant!');
-    console.log('  Monitor transaction at: https://sepolia.etherscan.io/tx/' + depositHash);
+    console.log(`  Monitor transaction at: ${sourceConfig.explorerUrl}/tx/${depositHash}`);
   } catch (error) {
-    logError(`Sepolia deposit failed: ${error}`);
+    logError(`${sourceConfig.name} deposit failed: ${error}`);
     process.exit(1);
   }
 
   // ===== STEP 2: Wait for finality =====
-  logStep('STEP 2', 'Waiting for Sepolia finality');
+  logStep('STEP 2', `Waiting for ${sourceConfig.name} finality`);
 
   if (SKIP_FINALITY_WAIT) {
     logWarning('⚡ SKIP_FINALITY_WAIT=true - Skipping finality wait for testing');
     console.log('  ⚠️  WARNING: This may cause API errors if deposit is not actually finalized!');
     console.log('  ⚠️  Only use this flag when you have ALREADY deposited and waited for finality.');
   } else {
-    console.log('  Sepolia requires ~32 blocks (~12-15 minutes) for finality');
+    console.log(`  ${sourceConfig.name} requires finality confirmation (~12-15 minutes for Ethereum chains)`);
     console.log('  Gateway will only process after source chain finality');
 
     // Get the block number when deposit happened
-    const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
+    const depositReceipt = await sourcePublic.getTransactionReceipt({ hash: depositHash });
     const depositBlock = hexToNumber(depositReceipt.blockNumber);
 
     console.log(`  Deposit confirmed at block: ${depositBlock}`);
@@ -417,7 +413,7 @@ async function fundTreasuryViaGateway() {
     let confirmedBlocks = 0;
     while (confirmedBlocks < 32) {
       await new Promise((resolve) => setTimeout(resolve, 30000)); // Wait 30 seconds
-      const currentBlock = Number(await sepoliaPublic.getBlockNumber());
+      const currentBlock = Number(await sourcePublic.getBlockNumber());
       confirmedBlocks = currentBlock - depositBlock;
       console.log(`  Progress: ${confirmedBlocks}/32 blocks confirmed`);
     }
@@ -431,8 +427,8 @@ async function fundTreasuryViaGateway() {
   const burnIntentTypedData = createBurnIntentTypedData(account.address, depositAmountUnits);
 
   console.log('  BurnIntent details:');
-  console.log(`    Source Domain: ${SEPOLIA_DOMAIN} (Sepolia)`);
-  console.log(`    Destination Domain: ${ARC_DOMAIN} (Arc Testnet)`);
+  console.log(`    Source: ${sourceConfig.name} (Domain ${sourceConfig.domainId})`);
+  console.log(`    Destination: ${destConfig.name} (Domain ${destConfig.domainId})`);
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
   console.log(`    Max Fee: 2.01 USDC (Circle Gateway minimum requirement)`);
 
@@ -448,94 +444,96 @@ async function fundTreasuryViaGateway() {
     process.exit(1);
   }
 
-  // ===== STEP 5: Mint USDC on Arc =====
-  logStep('STEP 5', 'Minting USDC on Arc via Gateway');
+  // ===== STEP 5: Mint USDC on destination chain =====
+  logStep('STEP 5', `Minting USDC on ${destConfig.name} via Gateway`);
 
-  const arcWallet = createWalletClient({
+  const destWallet = createWalletClient({
     account,
-    chain: arcTestnet,
-    transport: http('https://rpc.testnet.arc.network'),
+    chain: destConfig.chain,
+    transport: http(),
   });
 
-  const arcPublic = createPublicClient({
-    chain: arcTestnet,
-    transport: http('https://rpc.testnet.arc.network'),
+  const destPublic = createPublicClient({
+    chain: destConfig.chain,
+    transport: http(),
   });
 
   try {
-    console.log('\n  Submitting attestation to Gateway Minter on Arc...');
-    const mintHash = await arcWallet.writeContract({
-      address: GATEWAY_MINTER,
+    console.log(`\n  Submitting attestation to Gateway Minter on ${destConfig.name}...`);
+    const mintHash = await destWallet.writeContract({
+      address: GATEWAY_MINTER_ADDRESS,
       abi: gatewayMinterAbi,
       functionName: 'gatewayMint',
       args: [attestationData.attestation as `0x${string}`, attestationData.signature as `0x${string}`],
     });
 
     console.log(`  Minting transaction submitted: ${mintHash}`);
-    await arcPublic.waitForTransactionReceipt({ hash: mintHash });
-    logSuccess(`USDC minted on Arc: https://testnet.arcscan.app/tx/${mintHash}`);
+    await destPublic.waitForTransactionReceipt({ hash: mintHash });
+    logSuccess(`USDC minted on ${destConfig.name}: ${destConfig.explorerUrl}/tx/${mintHash}`);
   } catch (error) {
-    logError(`Minting on Arc failed: ${error}`);
+    logError(`Minting on ${destConfig.name} failed: ${error}`);
     logWarning('Attestation may have already been used or invalid');
     process.exit(1);
   }
 
-  // ===== STEP 6: Deposit to TreasuryVault on Arc =====
-  logStep('STEP 6', 'Funding TreasuryVault on Arc');
+  // ===== STEP 6: Deposit to TreasuryVault =====
+  logStep('STEP 6', `Funding TreasuryVault on ${destConfig.name}`);
 
   try {
-    // Check Arc USDC balance
-    const arcBalance = await arcPublic.readContract({
-      address: ARC_USDC,
+    // Check destination chain USDC balance
+    const destBalance = await destPublic.readContract({
+      address: destConfig.usdcAddress,
       abi: erc20Abi,
       functionName: 'balanceOf',
       args: [account.address],
     });
 
-    const arcBalanceFormatted = (Number(arcBalance) / 1_000_000).toString();
-    console.log(`  Current Arc USDC Balance: ${arcBalanceFormatted} USDC`);
+    const destBalanceFormatted = (Number(destBalance) / 1_000_000).toString();
+    console.log(`  Current ${destConfig.name} USDC Balance: ${destBalanceFormatted} USDC`);
 
-    if (Number(arcBalance) < Number(depositAmountUnits)) {
-      logError(`Insufficient USDC balance on Arc. Need ${DEPOSIT_AMOUNT} USDC, have ${arcBalanceFormatted} USDC`);
+    if (Number(destBalance) < Number(depositAmountUnits)) {
+      logError(`Insufficient USDC balance on ${destConfig.name}. Need ${DEPOSIT_AMOUNT} USDC, have ${destBalanceFormatted} USDC`);
       logWarning('Complete Gateway transfer first');
       process.exit(1);
     }
 
     // 6A: Approve TreasuryVault
     console.log('\n  Approving TreasuryVault...');
-    const arcApprovalHash = await arcWallet.writeContract({
-      address: ARC_USDC,
+    const treasuryApprovalHash = await destWallet.writeContract({
+      address: destConfig.usdcAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [TREASURY_VAULT, depositAmountUnits],
     });
-    await arcPublic.waitForTransactionReceipt({ hash: arcApprovalHash });
-    logSuccess(`Approved: https://testnet.arcscan.app/tx/${arcApprovalHash}`);
+    await destPublic.waitForTransactionReceipt({ hash: treasuryApprovalHash });
+    logSuccess(`Approved: ${destConfig.explorerUrl}/tx/${treasuryApprovalHash}`);
 
     // 6B: Deposit to Treasury
     console.log('\n  Depositing to TreasuryVault...');
-    const treasuryHash = await arcWallet.writeContract({
+    const treasuryHash = await destWallet.writeContract({
       address: TREASURY_VAULT,
       abi: treasuryAbi,
       functionName: 'depositToTreasury',
       args: [depositAmountUnits],
     });
-    await arcPublic.waitForTransactionReceipt({ hash: treasuryHash });
-    logSuccess(`Treasury funded: https://testnet.arcscan.app/tx/${treasuryHash}`);
+    await destPublic.waitForTransactionReceipt({ hash: treasuryHash });
+    logSuccess(`Treasury funded: ${destConfig.explorerUrl}/tx/${treasuryHash}`);
 
-    console.log('\n╔════════════════════════════════════════════════════════════╗');
-    console.log('║   ✅ Treasury Funding Complete via Circle Gateway!        ║');
-    console.log('╚════════════════════════════════════════════════════════════╝');
+    console.log('\n╔════════════════════════════════════════════════════════════════════╗');
+    console.log('║   ✅ Treasury Funding Complete via Circle Gateway!                ║');
+    console.log('╚════════════════════════════════════════════════════════════════════╝');
     console.log(`\n  Amount: ${DEPOSIT_AMOUNT} USDC`);
     console.log(`  Treasury: ${TREASURY_VAULT}`);
-    console.log(`  Network: Arc Testnet (Chain ID: 5042002)`);
+    console.log(`  Network: ${destConfig.name} (Chain ID: ${destConfig.chain.id})`);
+    console.log(`  Source: ${sourceConfig.name} (Domain ${sourceConfig.domainId})`);
+    console.log(`  Destination: ${destConfig.name} (Domain ${destConfig.domainId})`);
     console.log('\n  Next steps:');
     console.log('  1. Create departmental pots via frontend');
     console.log('  2. Allocate budgets to departments');
     console.log('  3. Begin treasury management operations');
     console.log('\n  💡 Future transfers from unified balance will be instant (<500ms)!\n');
   } catch (error) {
-    logError(`Arc deposit failed: ${error}`);
+    logError(`${destConfig.name} deposit failed: ${error}`);
     process.exit(1);
   }
 }
