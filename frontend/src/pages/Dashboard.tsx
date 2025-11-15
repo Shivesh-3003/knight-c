@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ArrowUpRight, DollarSign, Loader2 } from "lucide-react";
+import { ArrowUpRight, DollarSign, Loader2, Plus } from "lucide-react";
 import { useReadContracts, useBalance } from "wagmi";
 import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
 import { TreasuryFunding } from "@/components/TreasuryFunding";
+import { CreatePotModal } from "@/components/CreatePotModal";
 import { treasuryContract } from "@/lib/wagmi";
 import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
 import { stringToBytes32, formatUSDC } from "@/lib/utils";
@@ -25,9 +26,10 @@ export default function Dashboard() {
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [showSingleModal, setShowSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showCreatePotModal, setShowCreatePotModal] = useState(false);
 
   // Read pot details from contract
-  const { data: potsData, isLoading: isLoadingPots } = useReadContracts({
+  const { data: potsData, isLoading: isLoadingPots, refetch: refetchPots } = useReadContracts({
     contracts: POT_IDS.map((potId) => ({
       ...treasuryContract,
       functionName: "getPotDetails",
@@ -98,7 +100,13 @@ export default function Dashboard() {
 
       {/* Department Pots (Web3) */}
       <div>
-        <h2 className="mb-4 text-2xl font-bold">Department Budgets</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Department Budgets</h2>
+          <Button onClick={() => setShowCreatePotModal(true)} size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Create New Pot
+          </Button>
+        </div>
         {isLoadingPots ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -181,14 +189,22 @@ export default function Dashboard() {
             open={showSingleModal}
             onOpenChange={setShowSingleModal}
             pot={selectedPot}
+            onSuccess={() => refetchPots()}
           />
           <BatchPaymentModal
             open={showBatchModal}
             onOpenChange={setShowBatchModal}
             pot={selectedPot}
+            onSuccess={() => refetchPots()}
           />
         </>
       )}
+
+      <CreatePotModal
+        open={showCreatePotModal}
+        onOpenChange={setShowCreatePotModal}
+        onSuccess={() => refetchPots()}
+      />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Repeat, Zap } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Calendar, Repeat, Zap, Rocket } from "lucide-react";
 
 const MOCK_FLOWS = [
   {
@@ -48,6 +49,16 @@ export default function ScheduledFlows() {
           New Flow
         </Button>
       </div>
+
+      <Alert className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800">
+        <Rocket className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+        <AlertDescription className="ml-2">
+          <span className="font-semibold text-purple-900 dark:text-purple-100">🚀 Roadmap Feature - Chainlink Automation</span>
+          <p className="mt-1 text-sm text-purple-800 dark:text-purple-200">
+            Automated recurring payments coming soon. This feature will use Chainlink Keepers for trustless on-chain scheduling.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {MOCK_FLOWS.map((flow) => (

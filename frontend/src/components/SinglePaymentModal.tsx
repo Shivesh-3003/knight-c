@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ReallocationModal } from "@/components/ReallocationModal";
+import { treasuryContract } from "@/lib/wagmi";
+import { treasuryVaultAddress } from "@/lib/contract";
+import {
+  stringToBytes32,
+  parseUSDC,
+  formatUSDC,
+  isValidAddress,
+  getExplorerTxUrl,
+  truncateTxHash,
+} from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 interface SinglePaymentModalProps {
   open: boolean;
@@ -19,54 +31,142 @@ interface SinglePaymentModalProps {
   pot: {
     id: string;
     name: string;
-    budget: number;
-    spent: number;
+    budget: bigint;
+    spent: bigint;
   };
+  onSuccess?: () => void;
 }
 
-export function SinglePaymentModal({ open, onOpenChange, pot }: SinglePaymentModalProps) {
+export function SinglePaymentModal({
+  open,
+  onOpenChange,
+  pot,
+  onSuccess,
+}: SinglePaymentModalProps) {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showReallocation, setShowReallocation] = useState(false);
-  const [shortfall, setShortfall] = useState(0);
 
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+
+    // Validation
+    if (!isValidAddress(recipient)) {
+      toast.error("Validation Error", { description: "Invalid recipient address" });
+      return;
+    }
+
+    const paymentAmount = parseFloat(amount);
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      toast.error("Validation Error", { description: "Amount must be greater than 0" });
+      return;
+    }
 
     try {
-      const paymentAmount = parseFloat(amount);
-      const available = pot.budget - pot.spent;
+      // Convert to contract format
+      const potId = stringToBytes32(pot.id);
+      const amountWei = parseUSDC(amount);
 
-      // Simulate contract call - check if exceeds budget
-      if (paymentAmount > available) {
-        // Trigger reallocation modal
-        setShortfall(paymentAmount);
+      // Check if payment exceeds available budget (client-side check)
+      const available = pot.budget - pot.spent;
+      if (amountWei > available) {
         setShowReallocation(true);
-        toast.error("Insufficient budget", {
+        toast.error("Insufficient Budget", {
           description: "Budget reallocation required for this payment",
         });
-      } else {
-        // Simulate successful submission
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        
-        toast.success("Payment submitted", {
-          description: `Payment of $${paymentAmount.toLocaleString()} to ${recipient} is pending approval`,
-        });
-        
-        onOpenChange(false);
-        setRecipient("");
-        setAmount("");
+        return;
       }
-    } catch (error) {
-      toast.error("Payment failed", {
-        description: error instanceof Error ? error.message : "Unknown error occurred",
+
+      // Submit to contract
+      writeContract({
+        address: treasuryVaultAddress,
+        ...treasuryContract,
+        functionName: "submitPayment",
+        args: [potId, [recipient as `0x${string}`], [amountWei]],
       });
-    } finally {
-      setIsSubmitting(false);
+    } catch (err) {
+      toast.error("Transaction Error", {
+        description: err instanceof Error ? err.message : "Failed to submit payment",
+      });
     }
   };
+
+  // Handle transaction confirmation
+  useEffect(() => {
+    if (isConfirmed && hash) {
+      const available = pot.budget - pot.spent;
+      const amountWei = parseUSDC(amount);
+
+      // Determine if payment requires approval based on threshold
+      const requiresApproval = amountWei > parseUSDC("50000"); // DEFAULT_APPROVAL_THRESHOLD
+
+      toast.success(
+        requiresApproval ? "Payment Pending Approval" : "Payment Executed",
+        {
+          description: (
+            <div className="space-y-1">
+              <p>
+                {requiresApproval
+                  ? `Payment of ${formatUSDC(amountWei)} requires multi-sig approval`
+                  : `Payment of ${formatUSDC(amountWei)} has been executed`}
+              </p>
+              <a
+                href={getExplorerTxUrl(hash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:underline text-xs block mt-1"
+              >
+                View on Explorer: {truncateTxHash(hash)}
+              </a>
+            </div>
+          ),
+        }
+      );
+
+      // Reset form
+      setRecipient("");
+      setAmount("");
+      reset();
+
+      // Close modal and refresh data
+      onOpenChange(false);
+      onSuccess?.();
+    }
+  }, [isConfirmed, hash, amount, pot.budget, pot.spent, onOpenChange, onSuccess, reset]);
+
+  // Handle transaction error
+  useEffect(() => {
+    if (error) {
+      const errorMessage = error.message;
+
+      // Check for specific contract errors
+      if (errorMessage.includes("Exceeds budget")) {
+        setShowReallocation(true);
+        toast.error("Budget Exceeded", {
+          description: "This payment exceeds the available budget. Reallocate funds to proceed.",
+        });
+      } else if (errorMessage.includes("Not whitelisted")) {
+        toast.error("Recipient Not Whitelisted", {
+          description: "This recipient is not authorized to receive payments from this pot.",
+        });
+      } else {
+        toast.error("Transaction Failed", {
+          description: errorMessage,
+        });
+      }
+
+      reset();
+    }
+  }, [error, reset]);
+
+  const isSubmitting = isPending || isConfirming;
+  const available = pot.budget - pot.spent;
 
   return (
     <>
@@ -78,8 +178,10 @@ export function SinglePaymentModal({ open, onOpenChange, pot }: SinglePaymentMod
               Submit a single payment from the {pot.name} budget
             </DialogDescription>
           </DialogHeader>
+
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
+              {/* Recipient Address */}
               <div className="space-y-2">
                 <Label htmlFor="recipient">Recipient Address</Label>
                 <Input
@@ -87,9 +189,12 @@ export function SinglePaymentModal({ open, onOpenChange, pot }: SinglePaymentMod
                   placeholder="0x..."
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
+                  disabled={isSubmitting}
                   required
                 />
               </div>
+
+              {/* Amount */}
               <div className="space-y-2">
                 <Label htmlFor="amount">Amount (USDC)</Label>
                 <Input
@@ -98,26 +203,62 @@ export function SinglePaymentModal({ open, onOpenChange, pot }: SinglePaymentMod
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  disabled={isSubmitting}
                   required
                   min="0"
                   step="0.01"
                 />
               </div>
+
+              {/* Available Budget */}
               <div className="rounded-lg bg-muted p-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Available:</span>
                   <span className="font-semibold text-financial">
-                    ${(pot.budget - pot.spent).toLocaleString()}
+                    {formatUSDC(available)}
                   </span>
                 </div>
               </div>
+
+              {/* Transaction Status */}
+              {isConfirming && hash && (
+                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                    <p className="text-xs text-blue-800 dark:text-blue-200">
+                      Transaction confirming...
+                    </p>
+                  </div>
+                  <a
+                    href={getExplorerTxUrl(hash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline text-xs mt-1 block"
+                  >
+                    View on Explorer: {truncateTxHash(hash)}
+                  </a>
+                </div>
+              )}
             </div>
+
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Submit Payment"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isPending ? "Confirming..." : "Submitting..."}
+                  </>
+                ) : (
+                  "Submit Payment"
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -128,7 +269,8 @@ export function SinglePaymentModal({ open, onOpenChange, pot }: SinglePaymentMod
         open={showReallocation}
         onOpenChange={setShowReallocation}
         targetPot={pot.id}
-        shortfall={shortfall}
+        shortfall={parseFloat(amount) || 0}
+        onSuccess={onSuccess}
       />
     </>
   );

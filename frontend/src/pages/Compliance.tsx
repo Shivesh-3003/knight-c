@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Shield, Lock, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { FileText, Download, Shield, Lock, AlertCircle, Rocket } from "lucide-react";
 
 const MOCK_REPORTS = [
   {
@@ -45,6 +46,16 @@ export default function Compliance() {
           Generate Report
         </Button>
       </div>
+
+      <Alert className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800">
+        <Rocket className="h-5 w-5 text-green-600 dark:text-green-400" />
+        <AlertDescription className="ml-2">
+          <span className="font-semibold text-green-900 dark:text-green-100">🚀 Roadmap Feature - Event Analytics</span>
+          <p className="mt-1 text-sm text-green-800 dark:text-green-200">
+            On-chain audit trails via event logs coming soon. Query PaymentExecuted and BudgetReallocated events for comprehensive compliance reporting.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       {/* Security Overview */}
       <div className="grid gap-4 md:grid-cols-3">
