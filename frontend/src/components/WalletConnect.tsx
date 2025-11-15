@@ -24,6 +24,18 @@ export function WalletConnect() {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (mounted) {
+      console.log("[WalletConnect] Connectors status:",
+        connectors.map(c => ({
+          name: c.name,
+          id: c.id,
+          type: c.type
+        }))
+      );
+    }
+  }, [mounted, connectors]);
+
   const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
   const handleConnect = (connector: any) => {
@@ -82,7 +94,7 @@ export function WalletConnect() {
               <button
                 key={connector.id}
                 onClick={() => handleConnect(connector)}
-                disabled={!connector.ready || isPending}
+                disabled={isPending}
                 className="w-full flex items-center gap-4 p-4 rounded-2xl border border-gray-100 hover:bg-gray-50 hover:border-blue-200 transition-all text-left group shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-2xl shrink-0 shadow-inner group-hover:scale-105 transition-transform">
@@ -93,7 +105,7 @@ export function WalletConnect() {
                     {connector.name}
                   </span>
                   <span className="text-sm text-gray-500 group-hover:text-blue-600 font-medium">
-                    {!connector.ready ? "Not installed" : "Click to connect"}
+                    {isPending ? "Connecting..." : "Click to connect"}
                   </span>
                 </div>
               </button>

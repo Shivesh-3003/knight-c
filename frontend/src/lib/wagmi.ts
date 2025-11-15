@@ -48,7 +48,9 @@ export const config = createConfig({
       metadata: {
         name: "Knight-C Treasury",
         description: "Multi-Signature Treasury Management",
-        url: "https://knight-c.app",
+        url: typeof window !== 'undefined' && import.meta.env.DEV
+          ? window.location.origin
+          : "https://knight-c.app",
         icons: ["https://knight-c.app/icon.png"],
       },
     }),
@@ -61,7 +63,7 @@ export const config = createConfig({
     }),
   ],
   transports: {
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: http(arcTestnet.rpcUrls.default.http[0]),
   },
 });
 

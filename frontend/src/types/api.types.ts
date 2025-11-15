@@ -1,4 +1,5 @@
 // Circle Gateway REST API TypeScript Types
+// Cross-chain USDC transfers via Circle Gateway (NOT fiat on-ramp)
 
 // ===== Response Envelopes =====
 export interface ApiSuccessResponse<T> {
@@ -14,94 +15,71 @@ export interface ApiErrorResponse {
 export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 // ===== Status Types =====
-export type TransferStatus = "pending" | "complete" | "failed";
-export type DestinationType = "wallet" | "contract";
-export type SourceType = "wallet" | "contract";
-export type Currency = "USD" | "USDC";
-export type DestinationChain = "ethereum" | "polygon" | "arbitrum" | "avalanche";
+export type GatewayStatus = "pending" | "finalized" | "ready" | "pending_finality" | "not_found";
+export type TransferStatus = "pending" | "complete" | "failed" | "success";
+export type Chain = "Ethereum Sepolia" | "Arc Testnet";
 
-// ===== 1. GET /api/circle/balance =====
-export interface CircleBalanceData {
-  usdc: string;
-  usd: string;
-  walletAddress: string;
-}
-
-export type CircleBalanceResponse = ApiResponse<CircleBalanceData>;
-
-// ===== 2. POST /api/circle/deposit =====
-export interface DepositRequest {
+// ===== 1. POST /api/circle/gateway/deposit =====
+export interface GatewayDepositData {
+  depositHash: string;
   amount: string;
-  currency: Currency;
-  destinationType: DestinationType;
+  status: GatewayStatus;
+  estimatedFinality: string;
+  chain: Chain;
+  nextStep: string;
 }
 
-export interface DepositData {
-  transferId: string;
-  status: TransferStatus;
-  estimatedCompletion: string;
-}
+export type GatewayDepositResponse = GatewayDepositData;
 
-export type DepositResponse = ApiResponse<DepositData>;
-
-// ===== 3. POST /api/circle/withdraw =====
-export interface WithdrawRequest {
-  amount: string;
-  bankAccountId: string;
-  source: SourceType;
-}
-
-export interface WithdrawData {
-  transferId: string;
-  status: TransferStatus;
-}
-
-export type WithdrawResponse = ApiResponse<WithdrawData>;
-
-// ===== 4. POST /api/circle/transfer-to-arc =====
-export interface TransferToArcRequest {
-  amount: string;
-}
-
-export interface TransferToArcData {
-  challengeId?: string;
-  txHash?: string;
-  status: TransferStatus;
-}
-
-export type TransferToArcResponse = ApiResponse<TransferToArcData>;
-
-// ===== 5. GET /api/circle/status/:transferId =====
-export interface TransferStatusData {
-  id: string;
-  status: TransferStatus;
-  amount: string;
-  txHash?: string;
-  completedAt?: string;
-}
-
-export type TransferStatusResponse = ApiResponse<TransferStatusData>;
-
-// ===== 6. POST /api/circle/cross-chain =====
-export interface CrossChainTransferRequest {
-  amount: string;
-  destinationChain: DestinationChain;
-  destinationAddress: string;
-}
-
-export interface CrossChainTransferData {
+// ===== 2. GET /api/circle/gateway/attestation/:messageHash =====
+export interface GatewayAttestationData {
   messageHash: string;
   attestation?: string;
+  status: GatewayStatus;
+  nextStep: string;
+}
+
+export type GatewayAttestationResponse = GatewayAttestationData;
+
+// ===== 3. POST /api/circle/gateway/mint =====
+export interface GatewayMintData {
+  mintHash: string;
+  amount: string;
+  status: TransferStatus;
+  chain: Chain;
+  nextStep: string;
+}
+
+export type GatewayMintResponse = GatewayMintData;
+
+// ===== 4. POST /api/circle/treasury/deposit =====
+export interface TreasuryDepositData {
+  depositHash: string;
+  amount: string;
+  treasuryAddress: string;
+  chain: Chain;
   status: TransferStatus;
 }
 
-export type CrossChainTransferResponse = ApiResponse<CrossChainTransferData>;
+export type TreasuryDepositResponse = TreasuryDepositData;
+
+// ===== 5. GET /api/circle/balance/sepolia/:address =====
+// ===== 6. GET /api/circle/balance/arc/:address =====
+export interface BalanceData {
+  balance: string;
+  currency: "USDC";
+  chain: Chain;
+  address: string;
+}
+
+export type BalanceResponse = BalanceData;
 
 // ===== 7. GET /api/circle/treasury-balance =====
 export interface TreasuryBalanceData {
-  contractAddress: string;
   balance: string;
+  contractAddress: string;
   network: string;
+  currency: "USDC";
 }
 
-export type TreasuryBalanceResponse = ApiResponse<TreasuryBalanceData>;
+export type TreasuryBalanceResponse = TreasuryBalanceData;

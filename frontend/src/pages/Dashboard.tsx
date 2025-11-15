@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -43,10 +43,19 @@ export default function Dashboard() {
     })),
   });
 
-  // Read treasury contract USDC balance
-  const { data: balanceData, isLoading: isLoadingBalance } = useBalance({
+  // Read treasury contract USDC balance (Arc uses USDC as native token)
+  const { data: balanceData, isLoading: isLoadingBalance, isError: isBalanceError, refetch: refetchBalance } = useBalance({
     address: treasuryVaultAddress as `0x${string}`,
   });
+
+  // Debug logging
+  useEffect(() => {
+    console.log("[Dashboard] Wallet connected:", isConnected);
+    console.log("[Dashboard] Treasury address:", treasuryVaultAddress);
+    console.log("[Dashboard] Balance data:", balanceData);
+    console.log("[Dashboard] Balance loading:", isLoadingBalance);
+    console.log("[Dashboard] Balance error:", isBalanceError);
+  }, [isConnected, balanceData, isLoadingBalance, isBalanceError]);
 
   // Transform contract data into Pot objects
   const pots: Pot[] = POT_IDS.map((potId, index) => {
@@ -82,12 +91,30 @@ export default function Dashboard() {
         {/* Total Treasury Balance (Web3) */}
       <Card className="card-shadow border-2">
         <CardHeader className="pb-3">
-          <CardDescription className="text-sm font-medium">Total Treasury Balance</CardDescription>
+          <div className="flex items-center justify-between">
+            <CardDescription className="text-sm font-medium">Total Treasury Balance</CardDescription>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => refetchBalance()}
+              disabled={isLoadingBalance}
+              className="h-8 w-8 p-0"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingBalance ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
           <CardTitle className="text-5xl font-bold text-financial">
             {isLoadingBalance ? (
               <div className="flex items-center gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 <span className="text-2xl text-gray-400">Loading...</span>
+              </div>
+            ) : isBalanceError ? (
+              <div className="flex flex-col gap-1">
+                <span className="text-2xl text-red-600">Error loading balance</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Check console for details
+                </span>
               </div>
             ) : (
               formatUSDC(balanceData?.value || 0n)

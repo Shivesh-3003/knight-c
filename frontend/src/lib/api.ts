@@ -1,16 +1,12 @@
 import axios, { AxiosError } from "axios";
 import type {
   ApiResponse,
-  CircleBalanceResponse,
-  DepositRequest,
-  DepositResponse,
-  WithdrawRequest,
-  WithdrawResponse,
-  CrossChainTransferRequest,
-  TransferResponse,
-  TransferStatusResponse,
+  GatewayDepositResponse,
+  GatewayAttestationResponse,
+  GatewayMintResponse,
+  TreasuryDepositResponse,
+  BalanceResponse,
   TreasuryBalanceResponse,
-  TransferStatus,
 } from "@/types/api.types";
 import { POLLING_INTERVAL, MAX_POLLING_ATTEMPTS } from "./constants";
 
@@ -52,110 +48,17 @@ export function isApiError(error: unknown): error is AxiosError<{ error: string 
 }
 
 /**
- * Get Circle wallet balance
- */
-export async function getCircleBalance(): Promise<ApiResponse<CircleBalanceResponse>> {
-  try {
-    const response = await api.get<CircleBalanceResponse>("/api/circle/balance");
-    return { success: true, data: response.data };
-  } catch (error) {
-    if (isApiError(error)) {
-      return {
-        success: false,
-        error: error.response?.data?.error || error.message,
-      };
-    }
-    return { success: false, error: "Unknown error occurred" };
-  }
-}
-
-/**
- * Deposit fiat → USDC
- * @param amount - Amount in fiat currency
- * @param currency - Currency code (e.g., "USD")
- * @param destinationType - "wallet" (Circle wallet) or "contract" (TreasuryVault)
- */
-export async function depositFiat(
-  amount: number,
-  currency: string = "USD",
-  destinationType: "wallet" | "contract" = "contract"
-): Promise<ApiResponse<DepositResponse>> {
-  try {
-    const request: DepositRequest = { amount, currency, destinationType };
-    const response = await api.post<DepositResponse>("/api/circle/deposit", request);
-    return { success: true, data: response.data };
-  } catch (error) {
-    if (isApiError(error)) {
-      return {
-        success: false,
-        error: error.response?.data?.error || error.message,
-      };
-    }
-    return { success: false, error: "Unknown error occurred" };
-  }
-}
-
-/**
- * Withdraw USDC → fiat
- * @param amount - Amount in USDC
- * @param bankAccountId - Bank account ID from Circle
- * @param source - "wallet" (Circle wallet) or "contract" (TreasuryVault)
- */
-export async function withdrawToFiat(
-  amount: number,
-  bankAccountId: string,
-  source: "wallet" | "contract" = "contract"
-): Promise<ApiResponse<WithdrawResponse>> {
-  try {
-    const request: WithdrawRequest = { amount, bankAccountId, source };
-    const response = await api.post<WithdrawResponse>("/api/circle/withdraw", request);
-    return { success: true, data: response.data };
-  } catch (error) {
-    if (isApiError(error)) {
-      return {
-        success: false,
-        error: error.response?.data?.error || error.message,
-      };
-    }
-    return { success: false, error: "Unknown error occurred" };
-  }
-}
-
-/**
- * Transfer USDC from Circle wallet to Arc contract
+ * Deposit USDC to Gateway Wallet on Sepolia
+ * Initiates cross-chain transfer flow
  * @param amount - Amount in USDC
  */
-export async function transferToArc(
-  amount: number
-): Promise<ApiResponse<TransferResponse>> {
+export async function depositToGateway(amount: string): Promise<ApiResponse<GatewayDepositResponse>> {
   try {
-    const response = await api.post<TransferResponse>("/api/circle/transfer-to-arc", {
-      amount,
-    });
-    return { success: true, data: response.data };
-  } catch (error) {
-    if (isApiError(error)) {
-      return {
-        success: false,
-        error: error.response?.data?.error || error.message,
-      };
-    }
-    return { success: false, error: "Unknown error occurred" };
-  }
-}
-
-/**
- * Get transfer status by ID
- * @param transferId - Circle transfer ID
- */
-export async function getTransferStatus(
-  transferId: string
-): Promise<ApiResponse<TransferStatusResponse>> {
-  try {
-    const response = await api.get<TransferStatusResponse>(
-      `/api/circle/transfer-status/${transferId}`
+    const response = await api.post<ApiResponse<GatewayDepositResponse>>(
+      "/api/circle/gateway/deposit",
+      { amount }
     );
-    return { success: true, data: response.data };
+    return response.data;
   } catch (error) {
     if (isApiError(error)) {
       return {
@@ -168,64 +71,109 @@ export async function getTransferStatus(
 }
 
 /**
- * Poll transfer status until complete or timeout
- * @param transferId - Circle transfer ID
- * @param onProgress - Optional callback for status updates
+ * Get Gateway attestation for cross-chain transfer
+ * @param messageHash - Transaction hash from depositToGateway
  */
-export async function pollTransferStatus(
-  transferId: string,
-  onProgress?: (status: TransferStatus) => void
-): Promise<ApiResponse<TransferStatusResponse>> {
-  let attempts = 0;
-
-  while (attempts < MAX_POLLING_ATTEMPTS) {
-    const result = await getTransferStatus(transferId);
-
-    if (!result.success) {
-      return result;
+export async function getGatewayAttestation(
+  messageHash: string
+): Promise<ApiResponse<GatewayAttestationResponse>> {
+  try {
+    const response = await api.get<ApiResponse<GatewayAttestationResponse>>(
+      `/api/circle/gateway/attestation/${messageHash}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
     }
-
-    const status = result.data.status;
-    onProgress?.(status);
-
-    // Terminal states
-    if (status === "complete" || status === "failed") {
-      return result;
-    }
-
-    // Wait before next attempt
-    await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL));
-    attempts++;
+    return { success: false, error: "Unknown error occurred" };
   }
-
-  return {
-    success: false,
-    error: "Transfer status polling timeout",
-  };
 }
 
 /**
- * Cross-chain transfer via CCTP
- * @param amount - Amount in USDC
- * @param destinationChain - Target chain (e.g., "ethereum", "polygon")
- * @param destinationAddress - Recipient address on destination chain
+ * Mint USDC on Arc using Gateway attestation
+ * @param attestation - Cryptographic proof from Gateway
+ * @param amount - Amount to mint
  */
-export async function crossChainTransfer(
-  amount: number,
-  destinationChain: string,
-  destinationAddress: string
-): Promise<ApiResponse<TransferResponse>> {
+export async function mintOnArc(
+  attestation: string,
+  amount: string
+): Promise<ApiResponse<GatewayMintResponse>> {
   try {
-    const request: CrossChainTransferRequest = {
-      amount,
-      destinationChain,
-      destinationAddress,
-    };
-    const response = await api.post<TransferResponse>(
-      "/api/circle/cross-chain",
-      request
+    const response = await api.post<ApiResponse<GatewayMintResponse>>(
+      "/api/circle/gateway/mint",
+      { attestation, amount }
     );
-    return { success: true, data: response.data };
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Deposit USDC to TreasuryVault on Arc
+ * @param amount - Amount in USDC
+ */
+export async function depositToTreasury(
+  amount: string
+): Promise<ApiResponse<TreasuryDepositResponse>> {
+  try {
+    const response = await api.post<ApiResponse<TreasuryDepositResponse>>(
+      "/api/circle/treasury/deposit",
+      { amount }
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Get USDC balance on Ethereum Sepolia
+ * @param address - Wallet address
+ */
+export async function getSepoliaBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/sepolia/${address}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Get USDC balance on Arc Testnet
+ * @param address - Wallet address
+ */
+export async function getArcBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/arc/${address}`
+    );
+    return response.data;
   } catch (error) {
     if (isApiError(error)) {
       return {
@@ -240,14 +188,12 @@ export async function crossChainTransfer(
 /**
  * Get treasury contract balance (on-chain)
  */
-export async function getTreasuryBalance(): Promise<
-  ApiResponse<TreasuryBalanceResponse>
-> {
+export async function getTreasuryBalance(): Promise<ApiResponse<TreasuryBalanceResponse>> {
   try {
-    const response = await api.get<TreasuryBalanceResponse>(
+    const response = await api.get<ApiResponse<TreasuryBalanceResponse>>(
       "/api/circle/treasury-balance"
     );
-    return { success: true, data: response.data };
+    return response.data;
   } catch (error) {
     if (isApiError(error)) {
       return {
@@ -257,4 +203,41 @@ export async function getTreasuryBalance(): Promise<
     }
     return { success: false, error: "Unknown error occurred" };
   }
+}
+
+/**
+ * Poll Gateway attestation until ready
+ * @param messageHash - Transaction hash from depositToGateway
+ * @param onProgress - Optional callback for status updates
+ */
+export async function pollGatewayAttestation(
+  messageHash: string,
+  onProgress?: (status: string) => void
+): Promise<ApiResponse<GatewayAttestationResponse>> {
+  let attempts = 0;
+
+  while (attempts < MAX_POLLING_ATTEMPTS) {
+    const result = await getGatewayAttestation(messageHash);
+
+    if (!result.success) {
+      return result;
+    }
+
+    const status = result.data.status;
+    onProgress?.(status);
+
+    // Terminal states
+    if (status === "ready" || status === "not_found") {
+      return result;
+    }
+
+    // Wait before next attempt
+    await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL));
+    attempts++;
+  }
+
+  return {
+    success: false,
+    error: "Gateway attestation polling timeout",
+  };
 }
