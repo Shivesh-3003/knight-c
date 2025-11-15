@@ -272,6 +272,142 @@ router.get('/balance/gateway/:address', async (req, res) => {
 });
 
 /**
+ * GET /api/circle/balance/base/:address
+ * Get USDC balance on Base Sepolia
+ */
+router.get('/balance/base/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getBaseBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Base Sepolia',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/balance/arbitrum/:address
+ * Get USDC balance on Arbitrum Sepolia
+ */
+router.get('/balance/arbitrum/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getArbitrumBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Arbitrum Sepolia',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/balance/polygon/:address
+ * Get USDC balance on Polygon Amoy
+ */
+router.get('/balance/polygon/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getPolygonBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Polygon Amoy',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/circle/balance/avalanche/:address
+ * Get USDC balance on Avalanche Fuji
+ */
+router.get('/balance/avalanche/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getAvalancheBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        chain: 'Avalanche Fuji',
+        address,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/circle/treasury-balance
  * Get TreasuryVault contract balance on Arc (on-chain)
  */
