@@ -111,10 +111,15 @@ The system combines two separate infrastructures:
 ### Data Flow
 
 ```
-CFO has USDC on Ethereum Sepolia → Deposit to Gateway Wallet contract
-    → Wait for finality (~12-15 min) → Fetch Gateway attestation
-    → Submit attestation to Gateway Minter on Arc
-    → USDC instantly available on Arc (<500ms)
+CFO has USDC on Ethereum Sepolia
+    → Deposit to Gateway Wallet contract (creates unified USDC balance)
+    → Wait for finality (~12-15 min, ~32 blocks)
+    → Create BurnIntent with EIP-712 (sourceDomain: 0, destinationDomain: 26)
+    → Sign BurnIntent with private key
+    → POST signed BurnIntent to Gateway API
+    → Receive attestation + signature from API
+    → Call gatewayMint(attestation, signature) on Arc
+    → USDC instantly minted on Arc (<500ms)
     → Deposit USDC to TreasuryVault contract on Arc
     → CFO creates departmental pots via Web3
     → Contract enforces budgets automatically
@@ -246,14 +251,17 @@ ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 
 ### Setting Up Circle Gateway Integration
 
-1. Create Circle account and get API key from: https://console.circle.com
-2. Get testnet USDC on Ethereum Sepolia from: https://faucet.circle.com
-3. Get Sepolia ETH for gas from: https://sepolia-faucet.com
-4. Update `.env` files with:
-   - `CIRCLE_API_KEY` - For Gateway attestation API calls
+1. Get testnet USDC on Ethereum Sepolia from: https://faucet.circle.com
+2. Get Sepolia ETH for gas from: https://sepolia-faucet.com
+3. Update `.env` files with:
    - `PRIVATE_KEY` - Wallet with USDC on Sepolia
    - `TREASURY_CONTRACT_ADDRESS` - Deployed TreasuryVault on Arc
-5. Gateway contract addresses are pre-deployed by Circle (already in `.env.example`)
+4. Gateway contract addresses are pre-deployed by Circle (already in `.env.example`)
+
+**Important Notes:**
+- Circle Gateway does NOT require a CIRCLE_API_KEY for transfers
+- Gateway uses EIP-712 signed burn intents submitted to a public API endpoint
+- Domain IDs: Sepolia = 0, Arc Testnet = 26
 
 ### Funding Treasury via Circle Gateway
 
@@ -267,20 +275,28 @@ ts-node scripts/fund-treasury-via-gateway.ts
 ```
 
 **Option 2: Manual Step-by-Step Process**
-1. **Deposit on Sepolia:**
+1. **Deposit on Sepolia (Creates Unified Balance):**
    - Approve Gateway Wallet: `0x0077777d7EBA4688BDeF3E311b846F25870A19B9`
    - Call `deposit(token, amount)` on Gateway Wallet contract
+   - This creates a unified USDC balance accessible from any supported chain
    - Wait for finality (~12-15 minutes, ~32 blocks)
 
-2. **Get Attestation:**
-   - Call Circle Gateway API: `GET /attestations/{messageHash}`
-   - Receive cryptographic proof of unified balance
+2. **Create and Sign BurnIntent:**
+   - Create a BurnIntent with EIP-712 typed data containing:
+     - `sourceDomain: 0` (Sepolia)
+     - `destinationDomain: 26` (Arc Testnet)
+     - Transfer amount and recipient details
+   - Sign the BurnIntent with your private key
 
-3. **Mint on Arc:**
-   - Submit attestation to Gateway Minter: `0x0022222ABE238Cc2C7Bb1f21003F0a260052475B`
+3. **Submit to Gateway API:**
+   - POST signed BurnIntent to: `https://gateway-api-testnet.circle.com/v1/transfer`
+   - Receive attestation and signature in response
+
+4. **Mint on Arc:**
+   - Call `gatewayMint(attestation, signature)` on Gateway Minter: `0x0022222ABE238Cc2C7Bb1f21003F0a260052475B`
    - USDC becomes available on Arc in <500ms
 
-4. **Deposit to Treasury:**
+5. **Deposit to Treasury:**
    - Approve TreasuryVault contract
    - Call `depositToTreasury(amount)` on TreasuryVault
    - Treasury is now funded and ready for pot creation
@@ -357,7 +373,16 @@ ts-node scripts/fund-treasury-via-gateway.ts
 
 ## Important Notes
 
-- **Circle Gateway**: Circle Gateway is for cross-chain USDC transfers, NOT fiat on-ramping. You must already have USDC on a supported chain (Sepolia, Base, etc.) to use Gateway.
+- **Circle Gateway vs CCTP**: Circle Gateway is different from CCTP (Cross-Chain Transfer Protocol):
+  - **Gateway**: Uses unified USDC balance + burn intents. Instant transfers after initial deposit finality.
+  - **CCTP**: Direct burn-and-mint between chains. Uses `receiveMessage()` and attestation service at `iris-api.circle.com`.
+  - This project uses **Gateway**, NOT CCTP.
+- **Gateway Workflow**: Deposit → Create unified balance → Sign burn intent → API call → Mint on destination
+- **Gateway Contract Methods**:
+  - Wallet: `deposit(token, amount)` - Creates unified balance
+  - Minter: `gatewayMint(attestation, signature)` - Mints from unified balance
+- **Gateway API**: `https://gateway-api-testnet.circle.com/v1/transfer` (POST, no API key required)
+- **Domain IDs**: Sepolia = 0, Arc Testnet = 26
 - **Gas Token**: Arc uses USDC for gas, not ETH. Ensure deployment wallet has USDC from faucet.
 - **USDC Decimals**: Arc USDC uses 6 decimals (not 18). Always handle amounts accordingly.
 - **Multi-Sig**: Approval threshold is number of signatures required (e.g., 2/3 means 2 out of 3 approvers).
@@ -365,3 +390,4 @@ ts-node scripts/fund-treasury-via-gateway.ts
 - **Whitelist**: Payments can only go to pre-approved beneficiary addresses per pot.
 - **Foundry Legacy Flag**: Use `--legacy` flag when deploying to Arc to ensure EIP-1559 compatibility.
 - **Gateway Finality**: Sepolia requires ~12-15 minutes (~32 blocks) for finality before USDC appears in unified balance.
+- **Direct Transfer Warning**: Directly transferring USDC to Gateway Wallet with standard ERC-20 transfer will result in loss of funds. Always use the `deposit()` method.

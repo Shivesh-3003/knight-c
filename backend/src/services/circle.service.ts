@@ -53,9 +53,9 @@ const treasuryAbi = parseAbi([
 ]);
 
 // Gateway Minter ABI - for receiving cross-chain USDC transfers
-// Based on Circle's standard message passing pattern
+// CORRECTED: Gateway uses gatewayMint, not receiveMessage (which is CCTP)
 const gatewayMinterAbi = parseAbi([
-  'function receiveMessage(bytes message, bytes attestation) returns (bool)',
+  'function gatewayMint(bytes attestation, bytes signature) returns (bool)',
 ]);
 
 export interface GatewayDepositResult {
@@ -172,76 +172,36 @@ export class CircleService {
   }
 
   /**
-   * Get Gateway attestation for cross-chain transfer
-   * Attestation is available after source chain finality (~12-15 min for Sepolia)
+   * DEPRECATED - THIS METHOD IS INCORRECT FOR GATEWAY
    *
-   * @param messageHash - Transaction hash from depositToGateway
-   * @returns Attestation details
+   * This method was attempting to use CCTP attestation fetching for Gateway transfers,
+   * which is incorrect. Circle Gateway requires:
+   * 1. Deposit to Gateway Wallet (creates unified balance)
+   * 2. Create and sign BurnIntent with EIP-712
+   * 3. Submit BurnIntent to Gateway API: POST https://gateway-api-testnet.circle.com/v1/transfer
+   * 4. Call gatewayMint with the returned attestation and signature
+   *
+   * For the correct implementation, see scripts/fund-treasury-via-gateway.ts
+   *
+   * @deprecated Use the correct Gateway workflow with BurnIntent instead
    */
   async getGatewayAttestation(messageHash: string): Promise<GatewayAttestationResult> {
-    try {
-      if (!this.circleApiKey) {
-        throw new Error('Circle API key not configured. Set CIRCLE_API_KEY in .env file.');
-      }
-
-      console.log(`Fetching attestation for message hash: ${messageHash}`);
-
-      // Circle Gateway API endpoint for attestations
-      // Note: This endpoint returns both 'message' and 'attestation' fields when complete
-      // Both are required for the mintOnArc function to submit to Gateway Minter
-      const apiUrl = `https://api.circle.com/v1/w3s/transfers/${messageHash}`;
-
-      const response = await axios.get(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${this.circleApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = response.data;
-
-      // Check if attestation is available
-      if (data.status === 'complete' && data.attestation && data.message) {
-        console.log('✅ Attestation retrieved successfully');
-        return {
-          messageHash,
-          status: 'ready',
-          message: data.message,
-          attestation: data.attestation
-        };
-      } else if (data.status === 'pending_finality' || data.status === 'pending') {
-        console.log('⏳ Transfer pending finality on source chain');
-        return { messageHash, status: 'pending_finality', message: undefined, attestation: undefined };
-      } else {
-        console.log(`❌ Transfer status: ${data.status}`);
-        return { messageHash, status: 'not_found', message: undefined, attestation: undefined };
-      }
-    } catch (error: any) {
-      if (error.response) {
-        const status = error.response.status;
-        if (status === 404) {
-          console.log('❌ Transfer not found - may not be finalized yet');
-          return { messageHash, status: 'not_found', message: undefined, attestation: undefined };
-        } else if (status === 401 || status === 403) {
-          throw new Error('Circle API authentication failed. Check your CIRCLE_API_KEY.');
-        }
-        throw new Error(
-          `Circle API error (${status}): ${error.response.data?.message || 'Unknown error'}`
-        );
-      }
-      throw new Error(`Get attestation failed: ${error.message || error}`);
-    }
+    throw new Error(
+      'This method is deprecated. Circle Gateway does not work this way. ' +
+      'You must create a BurnIntent and submit it to the Gateway API. ' +
+      'See scripts/fund-treasury-via-gateway.ts for the correct implementation.'
+    );
   }
 
   /**
    * Mint USDC on Arc using Gateway attestation
-   * This completes the cross-chain transfer
+   * CORRECTED: Uses gatewayMint instead of receiveMessage
    *
-   * @param message - Encoded message payload from Gateway
-   * @param attestation - Cryptographic proof from Gateway
+   * @param attestation - Cryptographic attestation from Gateway API
+   * @param signature - Signature from Gateway API
    * @returns Mint transaction details
    */
-  async mintOnArc(message: string, attestation: string): Promise<GatewayMintResult> {
+  async mintOnArc(attestation: string, signature: string): Promise<GatewayMintResult> {
     if (!this.account || !this.arcWalletClient) {
       throw new Error('Private key not configured. Set PRIVATE_KEY in .env file.');
     }
@@ -249,12 +209,13 @@ export class CircleService {
     try {
       console.log('Submitting attestation to Gateway Minter on Arc...');
 
-      // Submit message and attestation to Gateway Minter contract
+      // CORRECTED: Gateway uses gatewayMint(attestation, signature)
+      // NOT receiveMessage(message, attestation) which is CCTP
       const mintHash = await this.arcWalletClient.writeContract({
         address: GATEWAY_MINTER_ADDRESS,
         abi: gatewayMinterAbi,
-        functionName: 'receiveMessage',
-        args: [message as `0x${string}`, attestation as `0x${string}`],
+        functionName: 'gatewayMint',
+        args: [attestation as `0x${string}`, signature as `0x${string}`],
         chain: undefined,
       });
 
