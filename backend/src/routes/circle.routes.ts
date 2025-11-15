@@ -236,6 +236,42 @@ router.get('/balance/arc/:address', async (req, res) => {
 });
 
 /**
+ * GET /api/circle/balance/gateway/:address
+ * Get Circle Gateway unified USDC balance across all chains
+ * This shows the total USDC deposited to Gateway Wallet that can be instantly transferred
+ */
+router.get('/balance/gateway/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address is required',
+      });
+    }
+
+    const balance = await circleService.getGatewayBalance(address as `0x${string}`);
+
+    res.json({
+      success: true,
+      data: {
+        balance,
+        currency: 'USDC',
+        type: 'Unified Balance (Circle Gateway)',
+        address,
+        note: 'This balance can be instantly transferred to any supported chain',
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/circle/treasury-balance
  * Get TreasuryVault contract balance on Arc (on-chain)
  */

@@ -295,6 +295,38 @@ export class CircleService {
   }
 
   /**
+   * Get Circle Gateway unified USDC balance
+   * This shows the total USDC deposited to Gateway that can be instantly transferred
+   * @param address - Wallet address to check
+   */
+  async getGatewayBalance(address: Address): Promise<string> {
+    try {
+      const apiUrl = `https://gateway-api-testnet.circle.com/v1/balances/${address}`;
+
+      const response = await axios.get(apiUrl);
+      const data = response.data;
+
+      // Gateway API returns balances per domain
+      // Sum up all balances to get total unified balance
+      if (data && data.balances) {
+        const totalBalance = Object.values(data.balances).reduce((sum: number, balance: any) => {
+          return sum + Number(balance);
+        }, 0);
+
+        return (totalBalance / 1_000_000).toString(); // Convert from 6 decimals
+      }
+
+      return '0';
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        // No balance found, return 0
+        return '0';
+      }
+      throw new Error(`Get Gateway balance failed: ${error.message || error}`);
+    }
+  }
+
+  /**
    * Transfer USDC to TreasuryVault on Arc (after minting via Gateway)
    *
    * @param amount - Amount in USDC

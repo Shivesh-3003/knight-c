@@ -71,6 +71,9 @@ const ARC_DOMAIN = 26;
 // Gateway API endpoint
 const GATEWAY_API_URL = 'https://gateway-api-testnet.circle.com/v1/transfer';
 
+// Testing flags
+const SKIP_FINALITY_WAIT = process.env.SKIP_FINALITY_WAIT === 'true';
+
 // ABIs
 const erc20Abi = [
   {
@@ -393,26 +396,33 @@ async function fundTreasuryViaGateway() {
 
   // ===== STEP 2: Wait for finality =====
   logStep('STEP 2', 'Waiting for Sepolia finality');
-  console.log('  Sepolia requires ~32 blocks (~12-15 minutes) for finality');
-  console.log('  Gateway will only process after source chain finality');
 
-  // Get the block number when deposit happened
-  const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
-  const depositBlock = hexToNumber(depositReceipt.blockNumber);
+  if (SKIP_FINALITY_WAIT) {
+    logWarning('⚡ SKIP_FINALITY_WAIT=true - Skipping finality wait for testing');
+    console.log('  ⚠️  WARNING: This may cause API errors if deposit is not actually finalized!');
+    console.log('  ⚠️  Only use this flag when you have ALREADY deposited and waited for finality.');
+  } else {
+    console.log('  Sepolia requires ~32 blocks (~12-15 minutes) for finality');
+    console.log('  Gateway will only process after source chain finality');
 
-  console.log(`  Deposit confirmed at block: ${depositBlock}`);
-  console.log(`  Waiting for 32 confirmations...`);
+    // Get the block number when deposit happened
+    const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
+    const depositBlock = hexToNumber(depositReceipt.blockNumber);
 
-  // Wait for 32 blocks
-  let confirmedBlocks = 0;
-  while (confirmedBlocks < 32) {
-    await new Promise((resolve) => setTimeout(resolve, 30000)); // Wait 30 seconds
-    const currentBlock = Number(await sepoliaPublic.getBlockNumber());
-    confirmedBlocks = currentBlock - depositBlock;
-    console.log(`  Progress: ${confirmedBlocks}/32 blocks confirmed`);
+    console.log(`  Deposit confirmed at block: ${depositBlock}`);
+    console.log(`  Waiting for 32 confirmations...`);
+
+    // Wait for 32 blocks
+    let confirmedBlocks = 0;
+    while (confirmedBlocks < 32) {
+      await new Promise((resolve) => setTimeout(resolve, 30000)); // Wait 30 seconds
+      const currentBlock = Number(await sepoliaPublic.getBlockNumber());
+      confirmedBlocks = currentBlock - depositBlock;
+      console.log(`  Progress: ${confirmedBlocks}/32 blocks confirmed`);
+    }
+
+    logSuccess('Finality reached! Proceeding to burn intent...');
   }
-
-  logSuccess('Finality reached! Proceeding to burn intent...');
 
   // ===== STEP 3: Create and sign BurnIntent =====
   logStep('STEP 3', 'Creating and signing BurnIntent');
