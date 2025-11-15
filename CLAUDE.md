@@ -10,8 +10,8 @@ Knight-C is a treasury management platform built on Arc Network, featuring unifi
 - Smart Contracts: Solidity 0.8.18 (Foundry framework)
 - Blockchain: Arc Network Testnet (Chain ID: 5042002)
 - Frontend: React + Vite + TypeScript + wagmi/viem
-- Backend: Express + TypeScript + Circle SDK
-- Payment Integration: Circle Gateway (REST API) + Circle Developer-Controlled Wallets
+- Backend: Express + TypeScript + viem
+- Cross-Chain Integration: Circle Gateway (cross-chain USDC transfers)
 - Gas Token: USDC (not ETH)
 
 ## Common Development Commands
@@ -70,17 +70,12 @@ npm run build
 npm start
 ```
 
-### Circle Wallet Management (Scripts)
+### Circle Gateway Treasury Funding (Scripts)
 
 ```bash
-# Initialize Circle entity secret (one-time setup)
-node scripts/initEntitySecret.js
-
-# Get ciphertext for wallet operations
-node scripts/getCiphertext.js
-
-# Create Circle programmable wallet
-node scripts/createCircleWallet.js
+# Fund treasury via Circle Gateway (cross-chain USDC transfer from Sepolia to Arc)
+# Requires: USDC on Ethereum Sepolia, PRIVATE_KEY in .env, TREASURY_CONTRACT_ADDRESS in .env
+ts-node scripts/fund-treasury-via-gateway.ts
 ```
 
 ## Architecture
@@ -95,11 +90,12 @@ node scripts/createCircleWallet.js
 
 The system combines two separate infrastructures:
 
-1. **Circle Gateway (Backend REST API)**
-   - Handles fiat ↔ USDC conversion
-   - Manages Circle Developer-Controlled Wallets
-   - Provides on/off-ramp functionality
-   - Location: `backend/src/services/`
+1. **Circle Gateway (Cross-Chain USDC Transfers)**
+   - Enables instant cross-chain USDC transfers (<500ms)
+   - Provides unified USDC balance across multiple blockchains
+   - Uses Gateway Wallet contracts + attestation service
+   - Location: `backend/src/services/circle.service.ts`
+   - Note: NOT a fiat on-ramp - handles cross-chain USDC movement only
 
 2. **TreasuryVault Smart Contract (Arc Blockchain)**
    - Enforces departmental budgets on-chain
@@ -115,8 +111,11 @@ The system combines two separate infrastructures:
 ### Data Flow
 
 ```
-CFO deposits fiat → Circle Gateway API → USDC minted
-    → Sent to TreasuryVault contract on Arc
+CFO has USDC on Ethereum Sepolia → Deposit to Gateway Wallet contract
+    → Wait for finality (~12-15 min) → Fetch Gateway attestation
+    → Submit attestation to Gateway Minter on Arc
+    → USDC instantly available on Arc (<500ms)
+    → Deposit USDC to TreasuryVault contract on Arc
     → CFO creates departmental pots via Web3
     → Contract enforces budgets automatically
     → Department managers execute payments
@@ -222,8 +221,17 @@ VITE_API_BASE_URL=http://localhost:3000
 
 ```bash
 CIRCLE_API_KEY=<circle_api_key>
-CIRCLE_ENTITY_SECRET=<circle_entity_secret>
+PRIVATE_KEY=<deployer_wallet_private_key>
+TREASURY_CONTRACT_ADDRESS=<deployed_treasuryvault_address>
 PORT=3000
+
+# Gateway Contract Addresses (pre-deployed by Circle)
+GATEWAY_WALLET_ADDRESS=0x0077777d7EBA4688BDeF3E311b846F25870A19B9
+GATEWAY_MINTER_ADDRESS=0x0022222ABE238Cc2C7Bb1f21003F0a260052475B
+
+# Network RPC URLs
+SEPOLIA_RPC_URL=https://rpc.sepolia.org
+ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 ```
 
 ## Key Workflows
@@ -236,13 +244,46 @@ PORT=3000
 4. Update `VITE_TREASURY_ADDRESS` in `frontend/.env` with deployed address
 5. Verify contract: `forge verify-contract <ADDRESS> src/TreasuryVault.sol:TreasuryVault --chain 5042002`
 
-### Setting Up Circle Integration
+### Setting Up Circle Gateway Integration
 
-1. Create Circle account and get API key from developer dashboard
-2. Run `node scripts/initEntitySecret.js` to initialize entity secret
-3. Create Circle wallet: `node scripts/createCircleWallet.js`
-4. Update backend `.env` with Circle credentials
-5. Set Circle wallet address in contract if needed
+1. Create Circle account and get API key from: https://console.circle.com
+2. Get testnet USDC on Ethereum Sepolia from: https://faucet.circle.com
+3. Get Sepolia ETH for gas from: https://sepolia-faucet.com
+4. Update `.env` files with:
+   - `CIRCLE_API_KEY` - For Gateway attestation API calls
+   - `PRIVATE_KEY` - Wallet with USDC on Sepolia
+   - `TREASURY_CONTRACT_ADDRESS` - Deployed TreasuryVault on Arc
+5. Gateway contract addresses are pre-deployed by Circle (already in `.env.example`)
+
+### Funding Treasury via Circle Gateway
+
+**Option 1: Using the Automated Script (Recommended)**
+```bash
+# Set amount in .env (default: 1000 USDC)
+DEPOSIT_AMOUNT=1000
+
+# Run the funding script
+ts-node scripts/fund-treasury-via-gateway.ts
+```
+
+**Option 2: Manual Step-by-Step Process**
+1. **Deposit on Sepolia:**
+   - Approve Gateway Wallet: `0x0077777d7EBA4688BDeF3E311b846F25870A19B9`
+   - Call `deposit(token, amount)` on Gateway Wallet contract
+   - Wait for finality (~12-15 minutes, ~32 blocks)
+
+2. **Get Attestation:**
+   - Call Circle Gateway API: `GET /attestations/{messageHash}`
+   - Receive cryptographic proof of unified balance
+
+3. **Mint on Arc:**
+   - Submit attestation to Gateway Minter: `0x0022222ABE238Cc2C7Bb1f21003F0a260052475B`
+   - USDC becomes available on Arc in <500ms
+
+4. **Deposit to Treasury:**
+   - Approve TreasuryVault contract
+   - Call `depositToTreasury(amount)` on TreasuryVault
+   - Treasury is now funded and ready for pot creation
 
 ### Creating a Department Pot
 
@@ -304,20 +345,23 @@ PORT=3000
 - Budget reallocation between pots
 - Beneficiary whitelisting
 - Audit trail via events
-- Circle Gateway integration (partial)
+- Circle Gateway integration for cross-chain USDC transfers (Sepolia → Arc)
 
 **Roadmap:**
+- Complete Circle Gateway API integration (attestation fetching + minting)
+- Support for additional source chains (Base, Arbitrum, Polygon via Gateway)
 - Scheduled/recurring payment flows (Chainlink Automation)
 - Privacy features using Arc's configurable privacy
-- Cross-chain USDC transfers (Circle CCTP)
 - Circle Yield integration for treasury optimization
 - Advanced analytics dashboard
 
 ## Important Notes
 
+- **Circle Gateway**: Circle Gateway is for cross-chain USDC transfers, NOT fiat on-ramping. You must already have USDC on a supported chain (Sepolia, Base, etc.) to use Gateway.
 - **Gas Token**: Arc uses USDC for gas, not ETH. Ensure deployment wallet has USDC from faucet.
 - **USDC Decimals**: Arc USDC uses 6 decimals (not 18). Always handle amounts accordingly.
 - **Multi-Sig**: Approval threshold is number of signatures required (e.g., 2/3 means 2 out of 3 approvers).
 - **Budget Enforcement**: Smart contract prevents overspending mathematically - no way to bypass.
 - **Whitelist**: Payments can only go to pre-approved beneficiary addresses per pot.
 - **Foundry Legacy Flag**: Use `--legacy` flag when deploying to Arc to ensure EIP-1559 compatibility.
+- **Gateway Finality**: Sepolia requires ~12-15 minutes (~32 blocks) for finality before USDC appears in unified balance.
