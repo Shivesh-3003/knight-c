@@ -23,7 +23,7 @@ Our TIER 1 platform, built for this hackathon, solves a corporation's most immed
 
 ✅ One Unified Global Treasury – Real-time visibility across all funds on a single dashboard, updated live from the blockchain.
 
-✅ Instant Global Settlement – Execute a cross-border payment with sub-second finality and a gas fee of \~one cent.
+✅ Instant Global Settlement – Execute a cross-border payment with sub-second finality and a gas fee of ~one cent.
 
 ✅ Automated Budget Enforcement – Departmental limits are smart contract state variables. The system mathematically cannot allow overspending.
 
@@ -41,23 +41,23 @@ Our TIER 1 platform, built for this hackathon, solves a corporation's most immed
 
 **Layer 1: Main Treasury (Smart Contract Wallet)**
 
-* Holds all company USDC, funded instantly from any chain via **Circle Gateway**.  
-* Central source of truth for global liquidity.  
+* Holds all company USDC, funded via **Circle Mint** (fiat→USDC conversion) and **Circle Gateway** (instant cross-chain transfers from any supported chain).
+* Central source of truth for global liquidity.
 * CFO controls top-level allocations.
 
-Layer 2: Departmental Pots (On-Chain Budgets)
+**Layer 2: Departmental Pots (On-Chain Budgets)**
 
 Smart contract "sub-accounts" for each department with:
 
-* **Allocated budget:** (e.g., $500K) Enforced by the TIER 1 contract.  
-* **Spending rules:** (e.g., \>$50K requires CFO) Enforced by multi-sig.  
+* **Allocated budget:** (e.g., $500K) Enforced by the TIER 1 contract.
+* **Spending rules:** (e.g., >$50K requires CFO) Enforced by multi-sig.
 * **Beneficiary rules:** (e.g., agencyAddress) Enforced by whitelists.
 
 **Layer 3: Automated Flows (Treasury Operations)**
 
-* **Allocation Flows:** Monthly budget distributions (Main Treasury → Pots).  
-* **Payment Flows:** Batch payroll, vendor payments, and subscriptions.  
-* **Approval Flows:** Multi-signature thresholds (\>$100K requires CFO \+ department head).  
+* **Allocation Flows:** Monthly budget distributions (Main Treasury → Pots).
+* **Payment Flows:** Batch payroll, vendor payments, and subscriptions.
+* **Approval Flows:** Multi-signature thresholds (>$100K requires CFO + department head).
 * **Enforcement Flows:** Budget validation before *every* transaction.
 
 ---
@@ -70,12 +70,11 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* CFO's company has $10M USD in their traditional bank account
-* Using Circle Gateway, CFO initiates deposit: $10M USD → USDC on Arc
-* Circle converts USD to USDC and deposits directly to TreasuryVault contract address
-* Show: Contract balance updates from $0 → $10M USDC in real-time on dashboard
-* CFO creates 3 Pots: Engineering ($2M), Marketing ($500K), Operations ($750K) by signing transactions with MetaMask
-* **Narration:** "The treasury is now on-chain, unified, and funded. No intermediate wallets, no cross-chain complexity."
+* **Step 1 (Fiat Conversion):** CFO's company has $10M USD in their traditional bank account. Using **Circle Mint's business API**, the CFO converts $10M USD → $10M USDC on Ethereum (where the business is onboarded with Circle).
+* **Step 2 (Cross-Chain Transfer):** The CFO initiates a cross-chain transfer using **Circle Gateway** to move the $10M USDC from Ethereum to the Arc Testnet **TreasuryVault contract address**.
+* **Show:** Contract balance updates from $0 → $10M USDC in real-time on the Arc dashboard.
+* CFO creates 3 Pots: Engineering ($2M), Marketing ($500K), Operations ($750K) by signing transactions with MetaMask.
+* **Narration:** "The treasury is now on-chain, unified, and funded. **Circle Gateway abstracts the chain**—the CFO manages **one unified treasury**, not eight. No intermediate wallets, no manual bridging."
 
 ### **Act 2: Instant Settlement (1.5 min)**
 
@@ -83,9 +82,9 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* Marketing pays $80K to a São Paulo agency.  
-* **Show timer:** Payment executes and finalizes in \<1 second.  
-* **Show gas:** "Total cost: **around one cent** in USDC gas."  
+* Marketing pays $80K to a São Paulo agency.
+* **Show timer:** Payment executes and finalizes in <1 second.
+* **Show gas:** "Total cost: **around one cent** in USDC gas."
 * **Narration:** "We just did what SWIFT takes 3-5 days and $2,000 to do. This is a real 99.9% cost and time reduction."
 
 ### **Act 3: Automated Payroll (1 min)**
@@ -94,9 +93,9 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* Engineering VP uploads a CSV (50 employees, $120K).  
-* This is \>$100K threshold, so it appears in the CFO's ApprovalQueue.  
-* CFO (as msg.sender) approves. The TIER 1 contract validates the signature and executes all 50 payments.  
+* Engineering VP uploads a CSV (50 employees, $120K).
+* This is >$100K threshold, so it appears in the CFO's ApprovalQueue.
+* CFO (as msg.sender) approves. The TIER 1 contract validates the signature and executes all 50 payments.
 * **Narration:** "This payroll is currently public, but the approval flow is 100% secure via on-chain multi-sig."
 
 ### **Act 4: Budget Enforcement (The Hero Demo) (2 min)**
@@ -105,13 +104,13 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* Marketing tries to spend $450K (only $420K available after $80K spent).  
-* The TIER 1 contract **rejects** the transaction: ❌ INSUFFICIENT BUDGET.  
-* The UI shows the rejection and a "Request Reallocation" button.  
-* The CFO receives the request and opens the **Reallocation Modal**.  
-* **The Modal reads real-time, on-chain data** from the contract to show "Operations: $750K available."  
-* CFO approves: Transfer $30K from Operations → Marketing.  
-* Now, the Marketing payment proceeds.  
+* Marketing tries to spend $450K (only $420K available after $80K spent).
+* The TIER 1 contract **rejects** the transaction: ❌ INSUFFICIENT BUDGET.
+* The UI shows the rejection and a "Request Reallocation" button.
+* The CFO receives the request and opens the **Reallocation Modal**.
+* **The Modal reads real-time, on-chain data** from the contract to show "Operations: $750K available."
+* CFO approves: Transfer $30K from Operations → Marketing.
+* Now, the Marketing payment proceeds.
 * **Narration:** "This is not a spreadsheet. This is mathematical certainty. The system *cannot* overspend."
 
 ### **Act 5: Scheduled Flows (1 min)**
@@ -120,8 +119,8 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* CFO navigates to the "Scheduled Flows" tab.  
-* Shows a (mock) UI of pre-configured payments: bi-weekly payroll, monthly retainers.  
+* CFO navigates to the "Scheduled Flows" tab.
+* Shows a (mock) UI of pre-configured payments: bi-weekly payroll, monthly retainers.
 * **Narration:** "In production, these flows are executed automatically by Chainlink Keepers, eliminating all manual payment processing."
 
 ### **Act 6: Instant Compliance (1 min)**
@@ -130,9 +129,9 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* Auditor requests Q4 report.  
-* CFO clicks (mock) "Generate Audit Report."  
-* A PDF is "generated" in 5 seconds with all on-chain transactions.  
+* Auditor requests Q4 report.
+* CFO clicks (mock) "Generate Audit Report."
+* A PDF is "generated" in 5 seconds with all on-chain transactions.
 * **Narration:** "Your audit trail is now immutable, instant, and free."
 
 ### **Act 7: The Roadmap (Vision Demo) (1 min)**
@@ -141,7 +140,7 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* Show a **single slide or mockup** (labeled "Roadmap") that visualizes the *original* "PRIVATE/PUBLIC" pot configuration.  
+* Show a **single slide or mockup** (labeled "Roadmap") that visualizes the *original* "PRIVATE/PUBLIC" pot configuration.
 * **Narration:** "Everything you just saw is built today. But we're most excited about what's next. We are building in lockstep with Arc's roadmap. When Arc's **planned Privacy Module** goes live, Knight-C will activate **Configurable Privacy**. This mockup shows our vision: 'Private' pots for payroll, making those transactions confidential. This is our end-state: a treasury that is instant, automated, *and* confidential."
 
 ---
