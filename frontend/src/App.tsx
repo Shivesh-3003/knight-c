@@ -6,6 +6,7 @@ import { WagmiProvider } from "wagmi";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { config } from "@/lib/wagmi";
 import { Layout } from "@/components/Layout";
+import { RequireWallet } from "@/components/RequireWallet";
 import Dashboard from "./pages/Dashboard";
 import Approvals from "./pages/Approvals";
 import ScheduledFlows from "./pages/ScheduledFlows";
@@ -22,7 +23,14 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Layout />}>
+            <Route
+              path="/"
+              element={
+                <RequireWallet>
+                  <Layout />
+                </RequireWallet>
+              }
+            >
               <Route index element={<Dashboard />} />
               <Route path="approvals" element={<Approvals />} />
               <Route path="scheduled" element={<ScheduledFlows />} />
