@@ -403,8 +403,8 @@ async function fundTreasuryViaGateway() {
     console.log('  Gateway will only process after source chain finality');
 
     // Get the block number when deposit happened
-    const depositReceipt = await sourcePublic.getTransactionReceipt({ hash: depositHash });
-    const depositBlock = hexToNumber(depositReceipt.blockNumber);
+    const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
+    const depositBlock = Number(depositReceipt.blockNumber);
 
     console.log(`  Deposit confirmed at block: ${depositBlock}`);
     console.log(`  Waiting for 32 confirmations...`);
@@ -432,7 +432,12 @@ async function fundTreasuryViaGateway() {
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
   console.log(`    Max Fee: 2.01 USDC (Circle Gateway minimum requirement)`);
 
-  const signature = await account.signTypedData(burnIntentTypedData);
+  const signature = await account.signTypedData({
+    domain: burnIntentTypedData.domain,
+    types: burnIntentTypedData.types,
+    primaryType: burnIntentTypedData.primaryType as 'BurnIntent',
+    message: burnIntentTypedData.message as any,
+  });
   logSuccess('BurnIntent signed with EIP-712');
 
   // ===== STEP 4: Submit to Gateway API =====
