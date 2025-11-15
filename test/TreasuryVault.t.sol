@@ -53,7 +53,7 @@ contract TreasuryVaultTest is Test {
         vm.etch(USDC_ADDRESS, address(usdc).code);
 
         // Deploy treasury
-        treasury = new TreasuryVault(cfo, USDC_ADDRESS, address(0x7));
+        treasury = new TreasuryVault(cfo, USDC_ADDRESS);
 
         // Mint USDC to test accounts
         MockUSDC(USDC_ADDRESS).mint(cfo, 10_000_000 * 1e6);
