@@ -3,50 +3,85 @@ import { Circle, CircleEnvironments } from '@circle-fin/circle-sdk';
 
 export class CircleService {
   private client: Circle;
+  private walletId: string;
 
   constructor() {
     this.client = new Circle(
       process.env.CIRCLE_API_KEY!,
       CircleEnvironments.sandbox, // Use 'production' for live
     );
+
+    // Use wallet ID from environment
+    this.walletId = process.env.CIRCLE_WALLET_ID || '';
   }
 
   /**
-   * Mint USDC from USD (On-ramp)
-   * Uses Circle Mint API
+   * Deposit USD and convert to USDC on Arc (Circle Mint)
+   *
+   * Flow for Circle Mint:
+   * 1. You wire USD to Circle (done outside this API)
+   * 2. Circle credits your Circle wallet with equivalent USDC
+   * 3. This method transfers that USDC to your TreasuryVault contract on Arc
+   *
+   * @param amount - Amount in USD/USDC
+   * @param destinationAddress - TreasuryVault contract address on Arc
+   * @returns Transfer details including transfer ID
    */
-  async mintUSDC(amount: string, walletId: string) {
+  async depositToContract(amount: string, destinationAddress: string) {
     try {
+      if (!this.walletId) {
+        throw new Error('CIRCLE_WALLET_ID not configured. Set it in .env file.');
+      }
+
+      // Transfer USDC from Circle wallet to Arc blockchain contract
       const response = await this.client.transfers.createTransfer({
         source: {
           type: 'wallet',
-          id: walletId,
+          id: this.walletId,
         },
         destination: {
           type: 'blockchain',
+          address: destinationAddress,
           chain: 'ARC',
         },
         amount: {
           amount,
-          currency: 'USD',
+          currency: 'USD', // Circle converts USD to USDC
         },
       });
 
       return response.data;
     } catch (error) {
-      throw new Error(`Mint failed: ${error}`);
+      throw new Error(`Deposit to contract failed: ${error}`);
     }
   }
 
   /**
-   * Redeem USDC for USD (Off-ramp)
+   * Withdraw USDC from contract and redeem for USD (Off-ramp)
+   *
+   * Flow:
+   * 1. Transfer USDC from Arc contract to Circle wallet (requires separate contract call)
+   * 2. Redeem USDC in Circle wallet for USD via wire transfer
+   *
+   * @param amount - Amount in USDC to redeem
+   * @param bankAccountId - Circle bank account ID for wire transfer
+   * @param contractAddress - TreasuryVault contract address (for withdrawal)
+   * @returns Redemption transfer details
    */
-  async redeemUSDC(amount: string, walletId: string, bankAccountId: string) {
+  async withdrawFromContract(amount: string, bankAccountId: string, contractAddress: string) {
     try {
+      if (!this.walletId) {
+        throw new Error('CIRCLE_WALLET_ID not configured');
+      }
+
+      // Note: This assumes USDC is already in Circle wallet
+      // In practice, you'd need to first withdraw from contract to wallet
+      // (requires a separate blockchain transaction)
+
       const response = await this.client.transfers.createTransfer({
         source: {
-          type: 'blockchain',
-          chain: 'ARC',
+          type: 'wallet',
+          id: this.walletId,
         },
         destination: {
           type: 'wire',
@@ -60,36 +95,37 @@ export class CircleService {
 
       return response.data;
     } catch (error) {
-      throw new Error(`Redeem failed: ${error}`);
+      throw new Error(`Withdrawal failed: ${error}`);
     }
   }
 
   /**
-   * Get wallet balance
+   * Get Circle wallet balance
+   * Shows how much USDC is available in your Circle wallet for deposits
    */
-  async getWalletBalance(walletId: string) {
+  async getCircleWalletBalance() {
     try {
-      const response = await this.client.wallets.getWallet({ id: walletId });
+      if (!this.walletId) {
+        throw new Error('CIRCLE_WALLET_ID not configured');
+      }
+
+      const response = await this.client.wallets.getWallet({ id: this.walletId });
       return response.data;
     } catch (error) {
-      throw new Error(`Get balance failed: ${error}`);
+      throw new Error(`Get wallet balance failed: ${error}`);
     }
   }
 
   /**
-   * Create developer-controlled wallet (for treasury)
+   * Get transfer status
+   * @param transferId - Transfer ID from Circle API
    */
-  async createTreasuryWallet() {
+  async getTransferStatus(transferId: string) {
     try {
-      const response = await this.client.wallets.createWallet({
-        accountType: 'SCA', // Smart Contract Account
-        blockchains: ['ARC'],
-        metadata: [{ key: 'name', value: 'Treasury Wallet' }],
-      });
-
+      const response = await this.client.transfers.getTransfer({ id: transferId });
       return response.data;
     } catch (error) {
-      throw new Error(`Create wallet failed: ${error}`);
+      throw new Error(`Get transfer status failed: ${error}`);
     }
   }
 }

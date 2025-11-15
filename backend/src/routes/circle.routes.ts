@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { CircleService } from '../services/circle.service';
-import { BridgeKitService } from '../services/bridgeKit.service';
+import { TreasuryService } from '../services/treasury.service';
 
 const router = Router();
 const circleService = new CircleService();
-const bridgeKitService = new BridgeKitService();
+const treasuryService = new TreasuryService();
 
 // On-ramp: USD → USDC
 router.post('/mint', async (req, res) => {
@@ -28,17 +28,6 @@ router.post('/redeem', async (req, res) => {
   }
 });
 
-// Cross-chain transfer
-router.post('/cross-chain', async (req, res) => {
-  try {
-    const { amount, destinationAddress, destinationChain } = req.body;
-    const result = await bridgeKitService.transferCrossChain(amount, destinationAddress, destinationChain);
-    res.json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Get wallet balance
 router.get('/balance/:walletId', async (req, res) => {
   try {
@@ -50,30 +39,25 @@ router.get('/balance/:walletId', async (req, res) => {
   }
 });
 
-// Create treasury wallet
-router.post('/create-wallet', async (req, res) => {
-  try {
-    const result = await circleService.createTreasuryWallet();
-    res.json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ===== FRONTEND-REQUIRED ENDPOINTS =====
 
 // Get treasury balance (on-chain)
 router.get('/treasury-balance', async (req, res) => {
   try {
-    // For now, return mock data since we need Web3 integration
-    // TODO: Implement actual on-chain balance query using viem
-    const treasuryAddress = process.env.VITE_TREASURY_ADDRESS || '0x0000000000000000000000000000000000000000';
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
+
+    if (!treasuryAddress) {
+      throw new Error('TREASURY_CONTRACT_ADDRESS not configured in environment');
+    }
+
+    const balance = await treasuryService.getTreasuryBalance(treasuryAddress);
 
     res.json({
       success: true,
       data: {
-        balance: '0', // TODO: Query actual balance from Arc RPC
-        address: treasuryAddress,
+        balance,
+        contractAddress: treasuryAddress,
+        network: 'arc-testnet',
         currency: 'USDC'
       }
     });
@@ -82,19 +66,28 @@ router.get('/treasury-balance', async (req, res) => {
   }
 });
 
-// Deposit fiat → USDC
+// Deposit USD/USDC to TreasuryVault contract via Circle Mint
 router.post('/deposit', async (req, res) => {
   try {
-    const { amount, currency, destinationType } = req.body;
+    const { amount } = req.body;
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
 
-    // TODO: Implement actual Circle deposit logic
+    if (!treasuryAddress) {
+      throw new Error('TREASURY_CONTRACT_ADDRESS not configured');
+    }
+
+    // Transfer USDC from Circle wallet to TreasuryVault contract
+    const result = await circleService.depositToContract(amount, treasuryAddress);
+
     res.json({
       success: true,
       data: {
-        transferId: `transfer_${Date.now()}`,
+        transferId: result.id,
         amount,
-        currency,
-        status: 'pending'
+        status: result.status || 'pending',
+        destination: treasuryAddress,
+        chain: 'ARC',
+        estimatedCompletion: new Date(Date.now() + 60000).toISOString()
       }
     });
   } catch (error: any) {
@@ -105,15 +98,27 @@ router.post('/deposit', async (req, res) => {
 // Withdraw USDC → fiat
 router.post('/withdraw', async (req, res) => {
   try {
-    const { amount, bankAccountId, source } = req.body;
+    const { amount, bankAccountId } = req.body;
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
 
-    // TODO: Implement actual Circle withdraw logic
+    if (!treasuryAddress) {
+      throw new Error('TREASURY_CONTRACT_ADDRESS not configured');
+    }
+
+    if (!bankAccountId) {
+      throw new Error('bankAccountId is required for withdrawals');
+    }
+
+    // Withdraw USDC from Circle wallet to bank account
+    const result = await circleService.withdrawFromContract(amount, bankAccountId, treasuryAddress);
+
     res.json({
       success: true,
       data: {
-        transferId: `withdraw_${Date.now()}`,
+        transferId: result.id,
         amount,
-        status: 'pending'
+        status: result.status || 'pending',
+        bankAccountId
       }
     });
   } catch (error: any) {
@@ -145,13 +150,19 @@ router.get('/transfer-status/:transferId', async (req, res) => {
   try {
     const { transferId } = req.params;
 
-    // TODO: Implement actual status lookup
+    // Query Circle API for transfer status
+    const result = await circleService.getTransferStatus(transferId);
+
     res.json({
       success: true,
       data: {
-        transferId,
-        status: 'complete', // Mock: complete status
-        timestamp: new Date().toISOString()
+        transferId: result.id,
+        status: result.status,
+        source: result.source,
+        destination: result.destination,
+        amount: result.amount,
+        createDate: result.createDate,
+        updateDate: result.updateDate
       }
     });
   } catch (error: any) {
@@ -159,15 +170,19 @@ router.get('/transfer-status/:transferId', async (req, res) => {
   }
 });
 
-// Get Circle wallet balance
+// Get Circle wallet balance (available USDC for deposits)
 router.get('/balance', async (req, res) => {
   try {
-    // TODO: Implement with actual Circle wallet ID
+    const result = await circleService.getCircleWalletBalance();
+
     res.json({
       success: true,
       data: {
-        balance: '0',
-        currency: 'USDC'
+        walletId: result.id,
+        balance: result.balances?.[0]?.amount || '0',
+        currency: 'USDC',
+        blockchain: result.blockchain,
+        address: result.address
       }
     });
   } catch (error: any) {

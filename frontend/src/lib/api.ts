@@ -205,39 +205,6 @@ export async function pollTransferStatus(
 }
 
 /**
- * Cross-chain transfer via CCTP
- * @param amount - Amount in USDC
- * @param destinationChain - Target chain (e.g., "ethereum", "polygon")
- * @param destinationAddress - Recipient address on destination chain
- */
-export async function crossChainTransfer(
-  amount: number,
-  destinationChain: string,
-  destinationAddress: string
-): Promise<ApiResponse<TransferResponse>> {
-  try {
-    const request: CrossChainTransferRequest = {
-      amount,
-      destinationChain,
-      destinationAddress,
-    };
-    const response = await api.post<TransferResponse>(
-      "/api/circle/cross-chain",
-      request
-    );
-    return { success: true, data: response.data };
-  } catch (error) {
-    if (isApiError(error)) {
-      return {
-        success: false,
-        error: error.response?.data?.error || error.message,
-      };
-    }
-    return { success: false, error: "Unknown error occurred" };
-  }
-}
-
-/**
  * Get treasury contract balance (on-chain)
  */
 export async function getTreasuryBalance(): Promise<
