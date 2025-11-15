@@ -11,6 +11,7 @@ import Approvals from "./pages/Approvals";
 import ScheduledFlows from "./pages/ScheduledFlows";
 import Compliance from "./pages/Compliance";
 import NotFound from "./pages/NotFound";
+import WalletGateway from "./pages/WalletGateway.tsx";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="approvals" element={<Approvals />} />
               <Route path="scheduled" element={<ScheduledFlows />} />
               <Route path="compliance" element={<Compliance />} />
+              <Route path="walletgateway" element={<WalletGateway />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
