@@ -2,43 +2,60 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ArrowUpRight, DollarSign } from "lucide-react";
+import { ArrowUpRight, DollarSign, Loader2 } from "lucide-react";
+import { useReadContracts, useBalance } from "wagmi";
 import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
+import { TreasuryFunding } from "@/components/TreasuryFunding";
+import { treasuryContract } from "@/lib/wagmi";
+import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
+import { stringToBytes32, formatUSDC } from "@/lib/utils";
+import { treasuryVaultAddress } from "@/lib/contract";
 
-const POTS = [
-  {
-    id: "engineering",
-    name: "Engineering",
-    budget: 2000000,
-    spent: 1200000,
-    color: "hsl(var(--chart-1))",
-  },
-  {
-    id: "marketing",
-    name: "Marketing",
-    budget: 500000,
-    spent: 380000,
-    color: "hsl(var(--chart-2))",
-  },
-  {
-    id: "operations",
-    name: "Operations",
-    budget: 800000,
-    spent: 450000,
-    color: "hsl(var(--chart-3))",
-  },
-];
+interface Pot {
+  id: PotId;
+  name: string;
+  budget: bigint;
+  spent: bigint;
+  color: string;
+}
 
 export default function Dashboard() {
-  const [selectedPot, setSelectedPot] = useState<typeof POTS[0] | null>(null);
+  const [selectedPot, setSelectedPot] = useState<Pot | null>(null);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [showSingleModal, setShowSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
 
-  const totalTreasury = 10000000;
+  // Read pot details from contract
+  const { data: potsData, isLoading: isLoadingPots } = useReadContracts({
+    contracts: POT_IDS.map((potId) => ({
+      ...treasuryContract,
+      functionName: "getPotDetails",
+      args: [stringToBytes32(potId)],
+    })),
+  });
 
-  const handleMakePayment = (pot: typeof POTS[0], batch = false) => {
+  // Read treasury contract USDC balance
+  const { data: balanceData, isLoading: isLoadingBalance } = useBalance({
+    address: treasuryVaultAddress as `0x${string}`,
+  });
+
+  // Transform contract data into Pot objects
+  const pots: Pot[] = POT_IDS.map((potId, index) => {
+    const potData = potsData?.[index];
+    const budget = potData?.status === "success" ? (potData.result as [bigint, bigint, bigint])[0] : 0n;
+    const spent = potData?.status === "success" ? (potData.result as [bigint, bigint, bigint])[1] : 0n;
+
+    return {
+      id: potId,
+      name: POT_NAMES[potId],
+      budget,
+      spent,
+      color: POT_COLORS[potId],
+    };
+  });
+
+  const handleMakePayment = (pot: Pot, batch = false) => {
     setSelectedPot(pot);
     setIsBatchMode(batch);
     if (batch) {
@@ -48,23 +65,24 @@ export default function Dashboard() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   return (
     <div className="space-y-8">
-      {/* Total Treasury */}
+      {/* Treasury Funding Section (REST API) */}
+      <TreasuryFunding />
+
+      {/* Total Treasury Balance (Web3) */}
       <Card className="card-shadow border-2">
         <CardHeader className="pb-3">
           <CardDescription className="text-sm font-medium">Total Treasury Balance</CardDescription>
           <CardTitle className="text-5xl font-bold text-financial">
-            {formatCurrency(totalTreasury)}
+            {isLoadingBalance ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <span className="text-2xl text-gray-400">Loading...</span>
+              </div>
+            ) : (
+              formatUSDC(balanceData?.value || 0n)
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -78,76 +96,83 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Department Pots */}
+      {/* Department Pots (Web3) */}
       <div>
         <h2 className="mb-4 text-2xl font-bold">Department Budgets</h2>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {POTS.map((pot) => {
-            const available = pot.budget - pot.spent;
-            const percentSpent = (pot.spent / pot.budget) * 100;
+        {isLoadingPots ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-500">Loading pot budgets from contract...</span>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {pots.map((pot) => {
+              const available = pot.budget - pot.spent;
+              const percentSpent = pot.budget > 0n ? Number((pot.spent * 100n) / pot.budget) : 0;
 
-            return (
-              <Card key={pot.id} className="card-shadow card-hover">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-xl">{pot.name}</CardTitle>
-                      <CardDescription className="mt-1">Department Budget</CardDescription>
+              return (
+                <Card key={pot.id} className="card-shadow card-hover">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-xl">{pot.name}</CardTitle>
+                        <CardDescription className="mt-1">Department Budget</CardDescription>
+                      </div>
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: pot.color }}
+                      />
                     </div>
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: pot.color }}
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Budget</span>
-                      <span className="font-semibold text-financial">
-                        {formatCurrency(pot.budget)}
-                      </span>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Budget</span>
+                        <span className="font-semibold text-financial">
+                          {formatUSDC(pot.budget)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Spent</span>
+                        <span className="font-semibold text-financial">
+                          {formatUSDC(pot.spent)}
+                        </span>
+                      </div>
+                      <Progress value={percentSpent} className="h-2" />
+                      <div className="flex justify-between text-sm font-medium">
+                        <span className="text-success">Available</span>
+                        <span className="text-success text-financial">
+                          {formatUSDC(available)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Spent</span>
-                      <span className="font-semibold text-financial">
-                        {formatCurrency(pot.spent)}
-                      </span>
-                    </div>
-                    <Progress value={percentSpent} className="h-2" />
-                    <div className="flex justify-between text-sm font-medium">
-                      <span className="text-success">Available</span>
-                      <span className="text-success text-financial">
-                        {formatCurrency(available)}
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="space-y-2 pt-2">
-                    <Button
-                      onClick={() => handleMakePayment(pot, false)}
-                      className="w-full"
-                      size="sm"
-                    >
-                      <DollarSign className="mr-2 h-4 w-4" />
-                      Make Payment
-                    </Button>
-                    {pot.id === "engineering" && (
+                    <div className="space-y-2 pt-2">
                       <Button
-                        onClick={() => handleMakePayment(pot, true)}
-                        variant="outline"
+                        onClick={() => handleMakePayment(pot, false)}
                         className="w-full"
                         size="sm"
                       >
-                        Batch Payment (Payroll)
+                        <DollarSign className="mr-2 h-4 w-4" />
+                        Make Payment
                       </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                      {pot.id === "engineering" && (
+                        <Button
+                          onClick={() => handleMakePayment(pot, true)}
+                          variant="outline"
+                          className="w-full"
+                          size="sm"
+                        >
+                          Batch Payment (Payroll)
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {selectedPot && (
