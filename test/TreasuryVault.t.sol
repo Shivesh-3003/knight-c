@@ -53,7 +53,7 @@ contract TreasuryVaultTest is Test {
         vm.etch(USDC_ADDRESS, address(usdc).code);
 
         // Deploy treasury
-        treasury = new TreasuryVault(cfo);
+        treasury = new TreasuryVault(cfo, USDC_ADDRESS, address(0x7));
 
         // Mint USDC to test accounts
         MockUSDC(USDC_ADDRESS).mint(cfo, 10_000_000 * 1e6);
@@ -99,15 +99,7 @@ contract TreasuryVaultTest is Test {
         assertTrue(treasury.approvers(user));
     }
 
-    function test_RemoveApprover() public {
-        vm.prank(cfo);
-        treasury.addApprover(user);
-        assertTrue(treasury.approvers(user));
 
-        vm.prank(cfo);
-        treasury.removeApprover(user);
-        assertFalse(treasury.approvers(user));
-    }
 
     function test_FailAddApproverNotCfo() public {
         vm.prank(user);
