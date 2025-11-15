@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ArrowUpRight, DollarSign, Loader2, Plus } from "lucide-react";
-import { useReadContracts, useBalance } from "wagmi";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowUpRight, DollarSign, Loader2, Plus, RefreshCw, Lock } from "lucide-react";
+import { useReadContracts, useBalance, useAccount } from "wagmi";
 import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
 import { TreasuryFunding } from "@/components/TreasuryFunding";
@@ -12,6 +13,7 @@ import { treasuryContract } from "@/lib/wagmi";
 import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
 import { stringToBytes32, formatUSDC } from "@/lib/utils";
 import { treasuryVaultAddress } from "@/lib/contract";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface Pot {
   id: PotId;
@@ -27,6 +29,10 @@ export default function Dashboard() {
   const [showSingleModal, setShowSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showCreatePotModal, setShowCreatePotModal] = useState(false);
+
+  // Get wallet connection status and user role
+  const { isConnected } = useAccount();
+  const { role, roleInfo } = useUserRole();
 
   // Read pot details from contract
   const { data: potsData, isLoading: isLoadingPots, refetch: refetchPots } = useReadContracts({
@@ -68,11 +74,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Treasury Funding Section (REST API) */}
-      <TreasuryFunding />
+    <TooltipProvider>
+      <div className="space-y-8">
+        {/* Treasury Funding Section (REST API) - CFO Only */}
+        {roleInfo.permissions.depositFunds && <TreasuryFunding />}
 
-      {/* Total Treasury Balance (Web3) */}
+        {/* Total Treasury Balance (Web3) */}
       <Card className="card-shadow border-2">
         <CardHeader className="pb-3">
           <CardDescription className="text-sm font-medium">Total Treasury Balance</CardDescription>
@@ -98,15 +105,31 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Department Pots (Web3) */}
-      <div>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Department Budgets</h2>
-          <Button onClick={() => setShowCreatePotModal(true)} size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Create New Pot
-          </Button>
-        </div>
+        {/* Department Pots (Web3) */}
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Department Budgets</h2>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    onClick={() => setShowCreatePotModal(true)}
+                    size="sm"
+                    disabled={!roleInfo.permissions.createPots}
+                  >
+                    {!roleInfo.permissions.createPots && <Lock className="mr-2 h-4 w-4" />}
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create New Pot
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!roleInfo.permissions.createPots && (
+                <TooltipContent>
+                  <p>Only CFO can create new department pots</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
         {isLoadingPots ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -155,35 +178,61 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="space-y-2 pt-2">
-                      <Button
-                        onClick={() => handleMakePayment(pot, false)}
-                        className="w-full"
-                        size="sm"
-                      >
-                        <DollarSign className="mr-2 h-4 w-4" />
-                        Make Payment
-                      </Button>
-                      {pot.id === "engineering" && (
-                        <Button
-                          onClick={() => handleMakePayment(pot, true)}
-                          variant="outline"
-                          className="w-full"
-                          size="sm"
-                        >
-                          Batch Payment (Payroll)
-                        </Button>
-                      )}
-                    </div>
+                      <div className="space-y-2 pt-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="w-full">
+                              <Button
+                                onClick={() => handleMakePayment(pot, false)}
+                                className="w-full"
+                                size="sm"
+                                disabled={!roleInfo.permissions.submitPayments}
+                              >
+                                {!roleInfo.permissions.submitPayments && <Lock className="mr-2 h-4 w-4" />}
+                                <DollarSign className="mr-2 h-4 w-4" />
+                                Make Payment
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {!roleInfo.permissions.submitPayments && (
+                            <TooltipContent>
+                              <p>Only CFO and VPs can submit payments</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        {pot.id === "engineering" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="w-full">
+                                <Button
+                                  onClick={() => handleMakePayment(pot, true)}
+                                  variant="outline"
+                                  className="w-full"
+                                  size="sm"
+                                  disabled={!roleInfo.permissions.submitPayments}
+                                >
+                                  {!roleInfo.permissions.submitPayments && <Lock className="mr-2 h-4 w-4" />}
+                                  Batch Payment (Payroll)
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            {!roleInfo.permissions.submitPayments && (
+                              <TooltipContent>
+                                <p>Only CFO and VPs can submit payroll</p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        )}
+                      </div>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
         )}
-      </div>
+        </div>
 
-      {selectedPot && (
+        {selectedPot && (
         <>
           <SinglePaymentModal
             open={showSingleModal}
@@ -200,11 +249,12 @@ export default function Dashboard() {
         </>
       )}
 
-      <CreatePotModal
-        open={showCreatePotModal}
-        onOpenChange={setShowCreatePotModal}
-        onSuccess={() => refetchPots()}
-      />
-    </div>
+        <CreatePotModal
+          open={showCreatePotModal}
+          onOpenChange={setShowCreatePotModal}
+          onSuccess={() => refetchPots()}
+        />
+      </div>
+    </TooltipProvider>
   );
 }
