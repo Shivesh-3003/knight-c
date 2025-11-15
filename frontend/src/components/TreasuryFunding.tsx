@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowDownToLine, Loader2, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
-import { depositFiat, getTreasuryBalance, pollTransferStatus, isApiError } from "@/lib/api";
+import { depositFiat, getTreasuryBalance, pollTransferStatus } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 import { getExplorerAddressUrl } from "@/lib/utils";
 import { treasuryVaultAddress } from "@/lib/contract";
@@ -28,7 +28,7 @@ export function TreasuryFunding() {
     setIsLoadingBalance(true);
     try {
       const response = await getTreasuryBalance();
-      if (!isApiError(response)) {
+      if (response.success && response.data) {
         setTreasuryBalance(response.data.balance);
       } else {
         console.error("Failed to fetch treasury balance:", response.error);
@@ -55,10 +55,10 @@ export function TreasuryFunding() {
 
     try {
       // Call Circle Gateway API to deposit fiat → USDC to contract
-      const response = await depositFiat(amount, "USD", "contract");
+      const response = await depositFiat(parseFloat(amount), "USD", "contract");
 
-      if (isApiError(response)) {
-        throw new Error(response.error);
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Deposit failed");
       }
 
       const { transferId: newTransferId } = response.data;
@@ -72,7 +72,7 @@ export function TreasuryFunding() {
       // Poll for transfer completion
       const statusResponse = await pollTransferStatus(newTransferId);
 
-      if (!isApiError(statusResponse) && statusResponse.data.status === "complete") {
+      if (statusResponse.success && statusResponse.data && statusResponse.data.status === "complete") {
         setTransferStatus("complete");
         toast({
           title: "✅ Deposit Complete",
@@ -90,7 +90,7 @@ export function TreasuryFunding() {
         setTransferStatus("failed");
         toast({
           title: "❌ Deposit Failed",
-          description: isApiError(statusResponse) ? statusResponse.error : "Transfer timed out or failed.",
+          description: !statusResponse.success ? statusResponse.error : "Transfer timed out or failed.",
           variant: "destructive",
         });
       }
