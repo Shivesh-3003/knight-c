@@ -1,8 +1,7 @@
 // backend/src/services/circle.service.ts
 // Circle Gateway Service - Cross-chain USDC transfers via Circle Gateway
-// NOT a fiat on-ramp - handles cross-chain USDC movement only
 
-import { createPublicClient, createWalletClient, http, parseUnits, type Address } from 'viem';
+import { createPublicClient, createWalletClient, http, parseUnits, parseAbi, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import axios from 'axios';
@@ -33,70 +32,31 @@ const arcTestnet = {
   testnet: true,
 } as const;
 
-// Contract Addresses
-const SEPOLIA_USDC_ADDRESS = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
-const GATEWAY_WALLET_ADDRESS = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
-const ARC_USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address;
-const GATEWAY_MINTER_ADDRESS = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
+// Contract Addresses - loaded from environment variables
+const SEPOLIA_USDC_ADDRESS = (process.env.SEPOLIA_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238') as Address;
+const GATEWAY_WALLET_ADDRESS = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9') as Address;
+const ARC_USDC_ADDRESS = (process.env.USDC_TOKEN_ADDRESS || process.env.VITE_USDC_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
+const GATEWAY_MINTER_ADDRESS = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
 
-// ABIs
-const erc20Abi = [
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ type: 'bool' }],
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ type: 'uint256' }],
-  },
-] as const;
+// ABIs - Using parseAbi for better type inference in viem v2
+const erc20Abi = parseAbi([
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function balanceOf(address account) view returns (uint256)',
+]);
 
-const gatewayWalletAbi = [
-  {
-    name: 'deposit',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'token', type: 'address' },
-      { name: 'value', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-] as const;
+const gatewayWalletAbi = parseAbi([
+  'function deposit(address token, uint256 value)',
+]);
 
-const treasuryAbi = [
-  {
-    name: 'depositToTreasury',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'amount', type: 'uint256' }],
-    outputs: [],
-  },
-] as const;
+const treasuryAbi = parseAbi([
+  'function depositToTreasury(uint256 amount)',
+]);
 
 // Gateway Minter ABI - for receiving cross-chain USDC transfers
 // Based on Circle's standard message passing pattern
-const gatewayMinterAbi = [
-  {
-    name: 'receiveMessage',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'message', type: 'bytes' },
-      { name: 'attestation', type: 'bytes' },
-    ],
-    outputs: [{ type: 'bool' }],
-  },
-] as const;
+const gatewayMinterAbi = parseAbi([
+  'function receiveMessage(bytes message, bytes attestation) returns (bool)',
+]);
 
 export interface GatewayDepositResult {
   depositHash: string;
@@ -107,6 +67,7 @@ export interface GatewayDepositResult {
 
 export interface GatewayAttestationResult {
   messageHash: string;
+  message?: string;
   attestation?: string;
   status: 'pending_finality' | 'ready' | 'not_found';
 }
@@ -119,10 +80,10 @@ export interface GatewayMintResult {
 
 export class CircleService {
   private account: ReturnType<typeof privateKeyToAccount> | null = null;
-  private sepoliaWalletClient: ReturnType<typeof createWalletClient> | null = null;
-  private sepoliaPublicClient: ReturnType<typeof createPublicClient>;
-  private arcWalletClient: ReturnType<typeof createWalletClient> | null = null;
-  private arcPublicClient: ReturnType<typeof createPublicClient>;
+  private sepoliaWalletClient: any = null;
+  private sepoliaPublicClient: any;
+  private arcWalletClient: any = null;
+  private arcPublicClient: any;
   private circleApiKey: string;
 
   constructor() {
@@ -177,6 +138,7 @@ export class CircleService {
         abi: erc20Abi,
         functionName: 'approve',
         args: [GATEWAY_WALLET_ADDRESS, amountInUnits],
+        chain: undefined,
       });
 
       await this.sepoliaPublicClient.waitForTransactionReceipt({ hash: approvalHash });
@@ -189,6 +151,7 @@ export class CircleService {
         abi: gatewayWalletAbi,
         functionName: 'deposit',
         args: [SEPOLIA_USDC_ADDRESS, amountInUnits],
+        chain: undefined,
       });
 
       await this.sepoliaPublicClient.waitForTransactionReceipt({ hash: depositHash });
@@ -224,6 +187,8 @@ export class CircleService {
       console.log(`Fetching attestation for message hash: ${messageHash}`);
 
       // Circle Gateway API endpoint for attestations
+      // Note: This endpoint returns both 'message' and 'attestation' fields when complete
+      // Both are required for the mintOnArc function to submit to Gateway Minter
       const apiUrl = `https://api.circle.com/v1/w3s/transfers/${messageHash}`;
 
       const response = await axios.get(apiUrl, {
@@ -236,22 +201,27 @@ export class CircleService {
       const data = response.data;
 
       // Check if attestation is available
-      if (data.status === 'complete' && data.attestation) {
+      if (data.status === 'complete' && data.attestation && data.message) {
         console.log('✅ Attestation retrieved successfully');
-        return { messageHash, status: 'ready', attestation: data.attestation };
+        return {
+          messageHash,
+          status: 'ready',
+          message: data.message,
+          attestation: data.attestation
+        };
       } else if (data.status === 'pending_finality' || data.status === 'pending') {
         console.log('⏳ Transfer pending finality on source chain');
-        return { messageHash, status: 'pending_finality', attestation: undefined };
+        return { messageHash, status: 'pending_finality', message: undefined, attestation: undefined };
       } else {
         console.log(`❌ Transfer status: ${data.status}`);
-        return { messageHash, status: 'not_found', attestation: undefined };
+        return { messageHash, status: 'not_found', message: undefined, attestation: undefined };
       }
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
         if (status === 404) {
           console.log('❌ Transfer not found - may not be finalized yet');
-          return { messageHash, status: 'not_found', attestation: undefined };
+          return { messageHash, status: 'not_found', message: undefined, attestation: undefined };
         } else if (status === 401 || status === 403) {
           throw new Error('Circle API authentication failed. Check your CIRCLE_API_KEY.');
         }
@@ -285,6 +255,7 @@ export class CircleService {
         abi: gatewayMinterAbi,
         functionName: 'receiveMessage',
         args: [message as `0x${string}`, attestation as `0x${string}`],
+        chain: undefined,
       });
 
       console.log(`Minting transaction submitted: ${mintHash}`);
@@ -299,7 +270,7 @@ export class CircleService {
         let amount = '0';
         try {
           const transferEvent = receipt.logs.find(
-            (log) =>
+            (log: any) =>
               log.topics[0] ===
               '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
           );
@@ -384,6 +355,7 @@ export class CircleService {
         abi: erc20Abi,
         functionName: 'approve',
         args: [treasuryAddress, amountInUnits],
+        chain: undefined,
       });
 
       await this.arcPublicClient.waitForTransactionReceipt({ hash: approvalHash });
@@ -396,6 +368,7 @@ export class CircleService {
         abi: treasuryAbi,
         functionName: 'depositToTreasury',
         args: [amountInUnits],
+        chain: undefined,
       });
 
       await this.arcPublicClient.waitForTransactionReceipt({ hash: depositHash });

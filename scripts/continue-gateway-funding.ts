@@ -1,32 +1,18 @@
 #!/usr/bin/env ts-node
 /**
- * Fund Treasury Via Gateway Script
+ * Continue Gateway Funding Script
  *
- * Complete end-to-end script for funding the Knight-C TreasuryVault
- * using Circle Gateway cross-chain USDC transfers.
- *
- * Flow:
- * 1. Deposit USDC to Gateway Wallet on Ethereum Sepolia
- * 2. Wait for finality (~12-15 minutes)
- * 3. Fetch attestation from Circle Gateway API
- * 4. Submit attestation to Gateway Minter on Arc
- * 5. Deposit USDC to TreasuryVault on Arc
- *
- * Prerequisites:
- * - USDC on Ethereum Sepolia (get from https://faucet.circle.com)
- * - Sepolia ETH for gas (get from https://sepolia-faucet.com)
- * - USDC on Arc for gas (USDC is the gas token on Arc)
- * - PRIVATE_KEY in .env
- * - TREASURY_CONTRACT_ADDRESS in .env
+ * Use this script to continue the treasury funding process after
+ * the Sepolia deposit has been made. It extracts the message hash
+ * from the transaction logs and continues from Step 2.
  */
 
 import { config } from 'dotenv';
-import { createWalletClient, createPublicClient, http, parseUnits, type Address } from 'viem';
+import { createWalletClient, createPublicClient, http, parseUnits, type Address, decodeEventLog } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import axios from 'axios';
 
-// Load environment variables
 config();
 
 // Arc Testnet Chain Configuration
@@ -55,13 +41,11 @@ const arcTestnet = {
   testnet: true,
 } as const;
 
-// Configuration from environment variables
-const SEPOLIA_USDC = (process.env.SEPOLIA_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238') as Address;
-const GATEWAY_WALLET = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9') as Address;
+// Configuration
 const ARC_USDC = (process.env.VITE_USDC_ADDRESS || process.env.USDC_TOKEN_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
 const GATEWAY_MINTER = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
 const TREASURY_VAULT = (process.env.TREASURY_CONTRACT_ADDRESS || process.env.VITE_TREASURY_ADDRESS) as Address;
-const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '2'; // 2 USDC default to minimize faucet usage + gas
+const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '2';
 
 // ABIs
 const erc20Abi = [
@@ -81,19 +65,6 @@ const erc20Abi = [
     stateMutability: 'view',
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [{ type: 'uint256' }],
-  },
-] as const;
-
-const gatewayWalletAbi = [
-  {
-    name: 'deposit',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'token', type: 'address' },
-      { name: 'value', type: 'uint256' },
-    ],
-    outputs: [],
   },
 ] as const;
 
@@ -120,6 +91,15 @@ const gatewayMinterAbi = [
   },
 ] as const;
 
+// MessageSent event from CCTP TokenMessenger contract
+const messageSentEventAbi = {
+  type: 'event',
+  name: 'MessageSent',
+  inputs: [
+    { name: 'message', type: 'bytes', indexed: false },
+  ],
+} as const;
+
 // Utility functions
 function logStep(step: string, message: string) {
   console.log(`\n🔷 ${step}: ${message}\n`);
@@ -137,6 +117,44 @@ function logError(message: string) {
   console.error(`  ❌ ${message}`);
 }
 
+async function extractMessageHashFromTx(txHash: `0x${string}`): Promise<string> {
+  const sepoliaPublic = createPublicClient({
+    chain: sepolia,
+    transport: http(),
+  });
+
+  console.log('  Fetching transaction receipt...');
+  const receipt = await sepoliaPublic.getTransactionReceipt({ hash: txHash });
+
+  console.log(`  Found ${receipt.logs.length} logs in transaction`);
+
+  // Look for MessageSent event in logs
+  for (const log of receipt.logs) {
+    try {
+      // Try to decode as MessageSent event
+      const decoded = decodeEventLog({
+        abi: [messageSentEventAbi],
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (decoded.eventName === 'MessageSent') {
+        const messageBytes = decoded.args.message as `0x${string}`;
+        // Calculate keccak256 hash of the message
+        const { keccak256 } = await import('viem');
+        const messageHash = keccak256(messageBytes);
+        logSuccess(`Extracted message hash: ${messageHash}`);
+        return messageHash;
+      }
+    } catch (e) {
+      // Not a MessageSent event, continue
+      continue;
+    }
+  }
+
+  throw new Error('MessageSent event not found in transaction logs');
+}
+
 async function pollForAttestation(
   messageHash: string,
   maxAttempts: number = 30,
@@ -151,27 +169,20 @@ async function pollForAttestation(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const apiUrl = `https://api.circle.com/v1/w3s/transfers/${messageHash}`;
-      const response = await axios.get(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${circleApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const apiUrl = `https://iris-api-sandbox.circle.com/attestations/${messageHash}`;
+      const response = await axios.get(apiUrl);
 
       const data = response.data;
 
-      if (data.status === 'complete' && data.attestation && data.message) {
+      if (data.status === 'complete' && data.attestation) {
         logSuccess('Attestation received!');
-        return { message: data.message, attestation: data.attestation };
+        return { message: messageHash, attestation: data.attestation };
       } else {
         console.log(`  Attempt ${attempt}/${maxAttempts}: Status = ${data.status || 'pending'}`);
       }
     } catch (error: any) {
       if (error.response?.status === 404) {
-        console.log(`  Attempt ${attempt}/${maxAttempts}: Transfer not yet finalized`);
-      } else if (error.response?.status === 401 || error.response?.status === 403) {
-        throw new Error('Circle API authentication failed. Check your CIRCLE_API_KEY.');
+        console.log(`  Attempt ${attempt}/${maxAttempts}: Attestation not yet available`);
       } else {
         console.log(`  Attempt ${attempt}/${maxAttempts}: ${error.message}`);
       }
@@ -186,8 +197,7 @@ async function pollForAttestation(
   throw new Error(`Attestation not received after ${maxAttempts} attempts.`);
 }
 
-async function fundTreasuryViaGateway() {
-  // Validate environment
+async function continueGatewayFunding(sepoliaTxHash: `0x${string}`) {
   if (!process.env.PRIVATE_KEY) {
     logError('PRIVATE_KEY not found in .env file');
     process.exit(1);
@@ -202,95 +212,35 @@ async function fundTreasuryViaGateway() {
   const depositAmountUnits = parseUnits(DEPOSIT_AMOUNT, 6);
 
   console.log('\n╔════════════════════════════════════════════════════════════╗');
-  console.log('║   Circle Gateway Treasury Funding Script                  ║');
+  console.log('║   Continue Gateway Treasury Funding                       ║');
   console.log('╚════════════════════════════════════════════════════════════╝');
   console.log(`\n  Wallet Address: ${account.address}`);
   console.log(`  Treasury Address: ${TREASURY_VAULT}`);
-  console.log(`  Deposit Amount: ${DEPOSIT_AMOUNT} USDC`);
-  console.log(`\n  Contract Addresses:`);
-  console.log(`    Sepolia USDC: ${SEPOLIA_USDC}`);
-  console.log(`    Gateway Wallet: ${GATEWAY_WALLET}`);
-  console.log(`    Arc USDC: ${ARC_USDC}`);
-  console.log(`    Gateway Minter: ${GATEWAY_MINTER}\n`);
+  console.log(`  Sepolia Tx: ${sepoliaTxHash}`);
+  console.log(`  Deposit Amount: ${DEPOSIT_AMOUNT} USDC\n`);
 
-  // ===== STEP 1: Deposit on Sepolia =====
-  logStep('STEP 1', 'Depositing USDC to Gateway on Sepolia');
-
-  const sepoliaWallet = createWalletClient({
-    account,
-    chain: sepolia,
-    transport: http(),
-  });
-
-  const sepoliaPublic = createPublicClient({
-    chain: sepolia,
-    transport: http(),
-  });
-
-  let depositHash: `0x${string}`;
-
+  // Extract message hash from transaction
+  logStep('STEP 1', 'Extracting Message Hash from Transaction');
+  let messageHash: string;
   try {
-    // Check Sepolia USDC balance
-    const sepoliaBalance = await sepoliaPublic.readContract({
-      address: SEPOLIA_USDC,
-      abi: erc20Abi,
-      functionName: 'balanceOf',
-      args: [account.address],
-    });
-
-    const sepoliaBalanceFormatted = (Number(sepoliaBalance) / 1_000_000).toString();
-    console.log(`  Current Sepolia USDC Balance: ${sepoliaBalanceFormatted} USDC`);
-
-    if (Number(sepoliaBalance) < Number(depositAmountUnits)) {
-      logError(`Insufficient USDC balance on Sepolia. Need ${DEPOSIT_AMOUNT} USDC, have ${sepoliaBalanceFormatted} USDC`);
-      logWarning('Get testnet USDC from: https://faucet.circle.com');
-      process.exit(1);
-    }
-
-    // 1A: Approve Gateway Wallet
-    console.log('\n  Approving Gateway Wallet...');
-    const approvalHash = await sepoliaWallet.writeContract({
-      address: SEPOLIA_USDC,
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [GATEWAY_WALLET, depositAmountUnits],
-    });
-    await sepoliaPublic.waitForTransactionReceipt({ hash: approvalHash });
-    logSuccess(`Approved: https://sepolia.etherscan.io/tx/${approvalHash}`);
-
-    // 1B: Deposit USDC
-    console.log('\n  Depositing USDC to Gateway Wallet...');
-    depositHash = await sepoliaWallet.writeContract({
-      address: GATEWAY_WALLET,
-      abi: gatewayWalletAbi,
-      functionName: 'deposit',
-      args: [SEPOLIA_USDC, depositAmountUnits],
-    });
-    await sepoliaPublic.waitForTransactionReceipt({ hash: depositHash });
-    logSuccess(`Deposited: https://sepolia.etherscan.io/tx/${depositHash}`);
-
-    logWarning('Waiting for finality (~12-15 minutes)...');
-    console.log('  Monitor transaction at: https://sepolia.etherscan.io/tx/' + depositHash);
+    messageHash = await extractMessageHashFromTx(sepoliaTxHash);
   } catch (error) {
-    logError(`Sepolia deposit failed: ${error}`);
+    logError(`Failed to extract message hash: ${error}`);
     process.exit(1);
   }
 
-  // ===== STEP 2: Fetch Attestation =====
-  logStep('STEP 2', 'Fetching Gateway Attestation');
-  console.log('  Waiting for Sepolia finality and Gateway attestation...');
-  console.log('  This typically takes 12-15 minutes (~32 blocks on Sepolia)');
-
+  // Fetch attestation
+  logStep('STEP 2', 'Fetching Circle Attestation');
   let attestationData: { message: string; attestation: string };
   try {
-    attestationData = await pollForAttestation(depositHash);
+    attestationData = await pollForAttestation(messageHash);
   } catch (error) {
     logError(`Failed to retrieve attestation: ${error}`);
-    logWarning('You can retry later using the transaction hash: ' + depositHash);
+    logWarning('The attestation may not be ready yet. Wait a few more minutes and try again.');
     process.exit(1);
   }
 
-  // ===== STEP 3: Minting USDC on Arc =====
+  // Mint USDC on Arc
   logStep('STEP 3', 'Minting USDC on Arc');
 
   const arcWallet = createWalletClient({
@@ -322,7 +272,7 @@ async function fundTreasuryViaGateway() {
     process.exit(1);
   }
 
-  // ===== STEP 4: Deposit to TreasuryVault on Arc =====
+  // Deposit to TreasuryVault on Arc
   logStep('STEP 4', 'Funding TreasuryVault on Arc');
 
   try {
@@ -343,7 +293,7 @@ async function fundTreasuryViaGateway() {
       process.exit(1);
     }
 
-    // 3A: Approve TreasuryVault
+    // Approve TreasuryVault
     console.log('\n  Approving TreasuryVault...');
     const arcApprovalHash = await arcWallet.writeContract({
       address: ARC_USDC,
@@ -354,7 +304,7 @@ async function fundTreasuryViaGateway() {
     await arcPublic.waitForTransactionReceipt({ hash: arcApprovalHash });
     logSuccess(`Approved: https://testnet.arcscan.app/tx/${arcApprovalHash}`);
 
-    // 3B: Deposit to Treasury
+    // Deposit to Treasury
     console.log('\n  Depositing to TreasuryVault...');
     const treasuryHash = await arcWallet.writeContract({
       address: TREASURY_VAULT,
@@ -370,19 +320,24 @@ async function fundTreasuryViaGateway() {
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log(`\n  Amount: ${DEPOSIT_AMOUNT} USDC`);
     console.log(`  Treasury: ${TREASURY_VAULT}`);
-    console.log(`  Network: Arc Testnet (Chain ID: 5042002)`);
-    console.log('\n  Next steps:');
-    console.log('  1. Create departmental pots via frontend');
-    console.log('  2. Allocate budgets to departments');
-    console.log('  3. Begin treasury management operations\n');
+    console.log(`  Network: Arc Testnet (Chain ID: 5042002)\n`);
   } catch (error) {
     logError(`Arc deposit failed: ${error}`);
     process.exit(1);
   }
 }
 
+// Get transaction hash from command line argument
+const sepoliaTxHash = process.argv[2] as `0x${string}`;
+
+if (!sepoliaTxHash || !sepoliaTxHash.startsWith('0x')) {
+  console.error('\nUsage: ts-node scripts/continue-gateway-funding.ts <sepolia-tx-hash>');
+  console.error('Example: ts-node scripts/continue-gateway-funding.ts 0xdf8f2809b10ce47e9d33569d2d787d791587117c764360b234c0780b2e5d7c7b\n');
+  process.exit(1);
+}
+
 // Run the script
-fundTreasuryViaGateway().catch((error) => {
+continueGatewayFunding(sepoliaTxHash).catch((error) => {
   logError(`Script failed: ${error}`);
   process.exit(1);
 });

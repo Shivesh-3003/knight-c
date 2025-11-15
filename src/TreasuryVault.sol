@@ -17,7 +17,7 @@ interface IERC20 {
  * @dev Manages USDC treasury with multi-sig approvals and budget controls
  */
 contract TreasuryVault {
-    address public immutable usdcToken;
+    address public immutable USDC_TOKEN;
 
     struct Pot {
         uint256 budget;
@@ -62,34 +62,42 @@ contract TreasuryVault {
     mapping(address => bool) public approvers;
 
     modifier onlyCfo() {
-        require(msg.sender == cfo, "Only CFO can execute this");
+        _onlyCfo();
         _;
     }
 
+    function _onlyCfo() internal view {
+        require(msg.sender == cfo, "Only CFO can execute this");
+    }
+
     modifier onlyApprover(bytes32 potId) {
-        require(_isApprover(potId, msg.sender), "Not approver");
+        _onlyApprover(potId);
         _;
+    }
+
+    function _onlyApprover(bytes32 potId) internal view {
+        require(_isApprover(potId, msg.sender), "Not approver");
     }
 
     constructor(address _cfo, address _usdcToken) {
         require(_cfo != address(0), "Invalid CFO");
         require(_usdcToken != address(0), "Invalid USDC");
         cfo = _cfo;
-        usdcToken = _usdcToken;
+        USDC_TOKEN = _usdcToken;
         approvers[_cfo] = true;
     }
 
     // Deposit USDC to treasury (called by authorized depositors)
     function depositToTreasury(uint256 amount) external {
         require(
-            IERC20(usdcToken).transferFrom(msg.sender, address(this), amount),
+            IERC20(USDC_TOKEN).transferFrom(msg.sender, address(this), amount),
             "Transfer failed"
         );
         emit TreasuryDeposit(msg.sender, amount, block.timestamp);
     }
 
     function getTreasuryBalance() external view returns (uint256) {
-        return IERC20(usdcToken).balanceOf(address(this));
+        return IERC20(USDC_TOKEN).balanceOf(address(this));
     }
 
     function createPot(
@@ -124,9 +132,11 @@ contract TreasuryVault {
         Pot storage pot = pots[potId];
         require(pot.budget >= pot.spent + total, "Exceeds budget");
 
-        bytes32 txHash = keccak256(
-            abi.encodePacked(potId, recipients, amounts, block.timestamp)
-        );
+        bytes memory data = abi.encodePacked(potId, recipients, amounts, block.timestamp);
+        bytes32 txHash;
+        assembly {
+            txHash := keccak256(add(data, 32), mload(data))
+        }
 
         if (total <= pot.threshold) {
             _executeBatchPayment(potId, recipients, amounts);
@@ -177,7 +187,7 @@ contract TreasuryVault {
             require(whitelist[potId][recipients[i]], "Not whitelisted");
             pot.spent += amounts[i];
             require(
-                IERC20(usdcToken).transfer(recipients[i], amounts[i]),
+                IERC20(USDC_TOKEN).transfer(recipients[i], amounts[i]),
                 "Transfer failed"
             );
             emit PaymentExecuted(
