@@ -13,12 +13,11 @@ interface IERC20 {
 
 /**
  * @title TreasuryVault
- * @notice Treasury with Circle Programmable Wallets integration
- * @dev Simplified - uses Circle's APIs for on/off ramps and cross-chain
+ * @notice Treasury management with departmental budget enforcement
+ * @dev Manages USDC treasury with multi-sig approvals and budget controls
  */
 contract TreasuryVault {
     address public immutable usdcToken;
-    address public circleWalletAddress; // Circle Programmable Wallet (developer-controlled)
 
     struct Pot {
         uint256 budget;
@@ -72,16 +71,15 @@ contract TreasuryVault {
         _;
     }
 
-    constructor(address _cfo, address _usdcToken, address _circleWallet) {
+    constructor(address _cfo, address _usdcToken) {
         require(_cfo != address(0), "Invalid CFO");
         require(_usdcToken != address(0), "Invalid USDC");
         cfo = _cfo;
         usdcToken = _usdcToken;
-        circleWalletAddress = _circleWallet;
         approvers[_cfo] = true;
     }
 
-    // Circle Programmable Wallet can deposit
+    // Deposit USDC to treasury (called by authorized depositors)
     function depositToTreasury(uint256 amount) external {
         require(
             IERC20(usdcToken).transferFrom(msg.sender, address(this), amount),

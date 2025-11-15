@@ -70,10 +70,12 @@ Smart contract "sub-accounts" for each department with:
 
 **Action:**
 
-* CFO's wallet shows $10M USDC on Ethereum.  
-* Using a (mocked) **Circle Gateway** interface, the CFO "deposits" the $10M to Knight-C on Arc, abstracting the chain away.  
-* CFO creates 3 Pots: Engineering ($2M), Marketing ($500K), Operations ($750K).  
-* **Narration:** "The treasury is now unified and funded."
+* CFO's company has $10M USD in their traditional bank account
+* Using Circle Gateway, CFO initiates deposit: $10M USD → USDC on Arc
+* Circle converts USD to USDC and deposits directly to TreasuryVault contract address
+* Show: Contract balance updates from $0 → $10M USDC in real-time on dashboard
+* CFO creates 3 Pots: Engineering ($2M), Marketing ($500K), Operations ($750K) by signing transactions with MetaMask
+* **Narration:** "The treasury is now on-chain, unified, and funded. No intermediate wallets, no cross-chain complexity."
 
 ### **Act 2: Instant Settlement (1.5 min)**
 

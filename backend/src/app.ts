@@ -33,7 +33,12 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    service: 'Knight-C Backend'
+    service: 'Knight-C Backend',
+    config: {
+      circleApi: process.env.CIRCLE_API_KEY ? 'Configured ✅' : 'Missing ❌',
+      treasuryContract: process.env.TREASURY_CONTRACT_ADDRESS ? 'Configured ✅' : 'Missing ❌',
+      arcRpc: process.env.ARC_TESTNET_RPC_URL ? 'Configured ✅' : 'Missing ❌',
+    }
   });
 });
 
