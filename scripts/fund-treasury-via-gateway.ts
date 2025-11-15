@@ -62,7 +62,7 @@ const GATEWAY_WALLET = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA468
 const ARC_USDC = (process.env.VITE_USDC_ADDRESS || process.env.USDC_TOKEN_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
 const GATEWAY_MINTER = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
 const TREASURY_VAULT = (process.env.TREASURY_CONTRACT_ADDRESS || process.env.VITE_TREASURY_ADDRESS) as Address;
-const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '2'; // 2 USDC default to minimize faucet usage + gas
+const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '5'; // 5 USDC default (need amount + 2 USDC min fee)
 
 // Gateway Domain IDs (from Circle Gateway documentation)
 const SEPOLIA_DOMAIN = 0;
@@ -211,7 +211,7 @@ function createBurnIntentTypedData(
   // Create the burn intent
   const burnIntent: BurnIntentMessage = {
     maxBlockHeight: BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'), // max uint256 for 7+ days validity
-    maxFee: BigInt(100000), // 0.1 USDC max fee (actual fees are typically < 0.01 USDC)
+    maxFee: BigInt(2_010000), // 2.01 USDC max fee (Circle Gateway requires minimum 2.0001 USDC)
     spec: {
       version: 1,
       sourceDomain: SEPOLIA_DOMAIN,
@@ -415,7 +415,7 @@ async function fundTreasuryViaGateway() {
   console.log(`    Source Domain: ${SEPOLIA_DOMAIN} (Sepolia)`);
   console.log(`    Destination Domain: ${ARC_DOMAIN} (Arc Testnet)`);
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
-  console.log(`    Max Fee: 0.1 USDC`);
+  console.log(`    Max Fee: 2.01 USDC (Circle Gateway minimum requirement)`);
 
   const signature = await account.signTypedData(burnIntentTypedData);
   logSuccess('BurnIntent signed with EIP-712');
