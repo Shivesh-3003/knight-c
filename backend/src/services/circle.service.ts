@@ -306,6 +306,9 @@ export class CircleService {
       const response = await axios.get(apiUrl);
       const data = response.data;
 
+      // DEBUG: Log the actual API response
+      console.log('Gateway Balance API Response:', JSON.stringify(data, null, 2));
+
       // Gateway API returns balances per domain
       // Sum up all balances to get total unified balance
       if (data && data.balances) {
@@ -316,12 +319,19 @@ export class CircleService {
         return (totalBalance / 1_000_000).toString(); // Convert from 6 decimals
       }
 
+      // Check if it's a different structure
+      if (data && typeof data === 'object') {
+        console.log('Unexpected structure, keys:', Object.keys(data));
+      }
+
       return '0';
     } catch (error: any) {
       if (error.response?.status === 404) {
         // No balance found, return 0
+        console.log('Gateway balance: 404 not found');
         return '0';
       }
+      console.error('Gateway balance error:', error.response?.data || error.message);
       throw new Error(`Get Gateway balance failed: ${error.message || error}`);
     }
   }
