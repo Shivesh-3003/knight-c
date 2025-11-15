@@ -92,6 +92,21 @@ await arcWallet.writeContract({
 - **Base Sepolia**: Domain 6
 - **Avalanche Fuji**: Domain 1
 
+### Gateway Fee Requirements
+**Important**: Circle Gateway requires a **minimum maxFee of 2.0001 USDC** for all transfers.
+
+This means you need to deposit at least:
+```
+Total Required = Transfer Amount + 2.0001 USDC
+```
+
+Examples:
+- Transfer 2 USDC → Need 4.0001 USDC in unified balance
+- Transfer 5 USDC → Need 7.0001 USDC in unified balance
+- Transfer 10 USDC → Need 12.0001 USDC in unified balance
+
+**Note**: The actual fee charged is typically < $0.01. The 2.0001 USDC is just the maximum you're willing to pay.
+
 ### EIP-712 BurnIntent Structure
 ```typescript
 {

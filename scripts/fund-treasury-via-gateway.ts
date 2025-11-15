@@ -62,7 +62,7 @@ const GATEWAY_WALLET = (process.env.GATEWAY_WALLET_ADDRESS || '0x0077777d7EBA468
 const ARC_USDC = (process.env.VITE_USDC_ADDRESS || process.env.USDC_TOKEN_ADDRESS || '0x3600000000000000000000000000000000000000') as Address;
 const GATEWAY_MINTER = (process.env.GATEWAY_MINTER_ADDRESS || '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B') as Address;
 const TREASURY_VAULT = (process.env.TREASURY_CONTRACT_ADDRESS || process.env.VITE_TREASURY_ADDRESS) as Address;
-const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '2'; // 2 USDC default to minimize faucet usage + gas
+const DEPOSIT_AMOUNT = process.env.DEPOSIT_AMOUNT || '5'; // 5 USDC default (need amount + 2 USDC min fee)
 
 // Gateway Domain IDs (from Circle Gateway documentation)
 const SEPOLIA_DOMAIN = 0;
@@ -70,6 +70,9 @@ const ARC_DOMAIN = 26;
 
 // Gateway API endpoint
 const GATEWAY_API_URL = 'https://gateway-api-testnet.circle.com/v1/transfer';
+
+// Testing flags
+const SKIP_FINALITY_WAIT = process.env.SKIP_FINALITY_WAIT === 'true';
 
 // ABIs
 const erc20Abi = [
@@ -211,7 +214,7 @@ function createBurnIntentTypedData(
   // Create the burn intent
   const burnIntent: BurnIntentMessage = {
     maxBlockHeight: BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'), // max uint256 for 7+ days validity
-    maxFee: BigInt(2_010000), // ~2.01 USDC max fee
+    maxFee: BigInt(2_010000), // 2.01 USDC max fee (Circle Gateway requires minimum 2.0001 USDC)
     spec: {
       version: 1,
       sourceDomain: SEPOLIA_DOMAIN,
@@ -273,8 +276,16 @@ async function submitBurnIntent(
 
     const result = await response.json();
 
-    if (!result.success || !result.attestation || !result.signature) {
-      throw new Error('Invalid response from Gateway API: missing attestation or signature');
+    // Log the actual response for debugging
+    console.log('\n  API Response:');
+    console.log(JSON.stringify(result, null, 2));
+
+    if (!result.success) {
+      throw new Error(`Gateway API returned success=false: ${result.message || 'Unknown error'}`);
+    }
+
+    if (!result.attestation || !result.signature) {
+      throw new Error(`Invalid response from Gateway API: missing attestation or signature. Response: ${JSON.stringify(result)}`);
     }
 
     logSuccess('Attestation received from Gateway API!');
@@ -385,26 +396,33 @@ async function fundTreasuryViaGateway() {
 
   // ===== STEP 2: Wait for finality =====
   logStep('STEP 2', 'Waiting for Sepolia finality');
-  console.log('  Sepolia requires ~32 blocks (~12-15 minutes) for finality');
-  console.log('  Gateway will only process after source chain finality');
 
-  // Get the block number when deposit happened
-  const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
-  const depositBlock = hexToNumber(depositReceipt.blockNumber);
+  if (SKIP_FINALITY_WAIT) {
+    logWarning('⚡ SKIP_FINALITY_WAIT=true - Skipping finality wait for testing');
+    console.log('  ⚠️  WARNING: This may cause API errors if deposit is not actually finalized!');
+    console.log('  ⚠️  Only use this flag when you have ALREADY deposited and waited for finality.');
+  } else {
+    console.log('  Sepolia requires ~32 blocks (~12-15 minutes) for finality');
+    console.log('  Gateway will only process after source chain finality');
 
-  console.log(`  Deposit confirmed at block: ${depositBlock}`);
-  console.log(`  Waiting for 32 confirmations...`);
+    // Get the block number when deposit happened
+    const depositReceipt = await sepoliaPublic.getTransactionReceipt({ hash: depositHash });
+    const depositBlock = hexToNumber(depositReceipt.blockNumber);
 
-  // Wait for 32 blocks
-  let confirmedBlocks = 0;
-  while (confirmedBlocks < 32) {
-    await new Promise((resolve) => setTimeout(resolve, 30000)); // Wait 30 seconds
-    const currentBlock = Number(await sepoliaPublic.getBlockNumber());
-    confirmedBlocks = currentBlock - depositBlock;
-    console.log(`  Progress: ${confirmedBlocks}/32 blocks confirmed`);
+    console.log(`  Deposit confirmed at block: ${depositBlock}`);
+    console.log(`  Waiting for 32 confirmations...`);
+
+    // Wait for 32 blocks
+    let confirmedBlocks = 0;
+    while (confirmedBlocks < 32) {
+      await new Promise((resolve) => setTimeout(resolve, 30000)); // Wait 30 seconds
+      const currentBlock = Number(await sepoliaPublic.getBlockNumber());
+      confirmedBlocks = currentBlock - depositBlock;
+      console.log(`  Progress: ${confirmedBlocks}/32 blocks confirmed`);
+    }
+
+    logSuccess('Finality reached! Proceeding to burn intent...');
   }
-
-  logSuccess('Finality reached! Proceeding to burn intent...');
 
   // ===== STEP 3: Create and sign BurnIntent =====
   logStep('STEP 3', 'Creating and signing BurnIntent');
@@ -415,7 +433,7 @@ async function fundTreasuryViaGateway() {
   console.log(`    Source Domain: ${SEPOLIA_DOMAIN} (Sepolia)`);
   console.log(`    Destination Domain: ${ARC_DOMAIN} (Arc Testnet)`);
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
-  console.log(`    Max Fee: 2.01 USDC`);
+  console.log(`    Max Fee: 2.01 USDC (Circle Gateway minimum requirement)`);
 
   const signature = await account.signTypedData(burnIntentTypedData);
   logSuccess('BurnIntent signed with EIP-712');
