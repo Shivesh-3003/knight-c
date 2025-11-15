@@ -273,8 +273,16 @@ async function submitBurnIntent(
 
     const result = await response.json();
 
-    if (!result.success || !result.attestation || !result.signature) {
-      throw new Error('Invalid response from Gateway API: missing attestation or signature');
+    // Log the actual response for debugging
+    console.log('\n  API Response:');
+    console.log(JSON.stringify(result, null, 2));
+
+    if (!result.success) {
+      throw new Error(`Gateway API returned success=false: ${result.message || 'Unknown error'}`);
+    }
+
+    if (!result.attestation || !result.signature) {
+      throw new Error(`Invalid response from Gateway API: missing attestation or signature. Response: ${JSON.stringify(result)}`);
     }
 
     logSuccess('Attestation received from Gateway API!');
