@@ -448,6 +448,13 @@ router.get('/treasury-balance', async (req, res) => {
 router.post('/transfer-to-treasury', async (req, res) => {
   try {
     const { amount, recipientAddress } = req.body;
+ * POST /api/circle/mock-mint
+ * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
+ * Transfers USDC from a test wallet to the treasury based on selected chain
+ */
+router.post('/mock-mint', async (req, res) => {
+  try {
+    const { amount, destinationChain } = req.body;
 
     if (!amount) {
       return res.status(400).json({

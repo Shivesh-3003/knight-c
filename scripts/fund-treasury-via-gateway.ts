@@ -367,6 +367,7 @@ async function fundTreasuryViaGateway() {
       abi: erc20Abi,
       functionName: 'approve',
       args: [GATEWAY_WALLET_ADDRESS, depositAmountUnits],
+      chain: undefined,
     });
     await sourcePublic.waitForTransactionReceipt({ hash: approvalHash });
     logSuccess(`Approved: ${sourceConfig.explorerUrl}/tx/${approvalHash}`);
@@ -378,6 +379,7 @@ async function fundTreasuryViaGateway() {
       abi: gatewayWalletAbi,
       functionName: 'deposit',
       args: [sourceConfig.usdcAddress, depositAmountUnits],
+      chain: undefined,
     });
     await sourcePublic.waitForTransactionReceipt({ hash: depositHash });
     logSuccess(`Deposited: ${sourceConfig.explorerUrl}/tx/${depositHash}`);
@@ -404,7 +406,7 @@ async function fundTreasuryViaGateway() {
 
     // Get the block number when deposit happened
     const depositReceipt = await sourcePublic.getTransactionReceipt({ hash: depositHash });
-    const depositBlock = hexToNumber(depositReceipt.blockNumber);
+    const depositBlock = Number(depositReceipt.blockNumber);
 
     console.log(`  Deposit confirmed at block: ${depositBlock}`);
     console.log(`  Waiting for 32 confirmations...`);
@@ -432,7 +434,12 @@ async function fundTreasuryViaGateway() {
   console.log(`    Amount: ${DEPOSIT_AMOUNT} USDC`);
   console.log(`    Max Fee: 2.01 USDC (Circle Gateway minimum requirement)`);
 
-  const signature = await account.signTypedData(burnIntentTypedData);
+  const signature = await account.signTypedData({
+    domain: burnIntentTypedData.domain,
+    types: burnIntentTypedData.types,
+    primaryType: burnIntentTypedData.primaryType as 'BurnIntent',
+    message: burnIntentTypedData.message as any,
+  });
   logSuccess('BurnIntent signed with EIP-712');
 
   // ===== STEP 4: Submit to Gateway API =====
@@ -465,6 +472,7 @@ async function fundTreasuryViaGateway() {
       abi: gatewayMinterAbi,
       functionName: 'gatewayMint',
       args: [attestationData.attestation as `0x${string}`, attestationData.signature as `0x${string}`],
+      chain: undefined,
     });
 
     console.log(`  Minting transaction submitted: ${mintHash}`);
@@ -504,6 +512,7 @@ async function fundTreasuryViaGateway() {
       abi: erc20Abi,
       functionName: 'approve',
       args: [TREASURY_VAULT, depositAmountUnits],
+      chain: undefined,
     });
     await destPublic.waitForTransactionReceipt({ hash: treasuryApprovalHash });
     logSuccess(`Approved: ${destConfig.explorerUrl}/tx/${treasuryApprovalHash}`);
@@ -515,6 +524,7 @@ async function fundTreasuryViaGateway() {
       abi: treasuryAbi,
       functionName: 'depositToTreasury',
       args: [depositAmountUnits],
+      chain: undefined,
     });
     await destPublic.waitForTransactionReceipt({ hash: treasuryHash });
     logSuccess(`Treasury funded: ${destConfig.explorerUrl}/tx/${treasuryHash}`);

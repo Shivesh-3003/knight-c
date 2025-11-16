@@ -3,21 +3,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowDownToLine, Loader2, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
-import { depositToGateway, getTreasuryBalance, pollGatewayAttestation } from "@/lib/api";
+import { mockMintAndDeposit, getTreasuryBalance } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
+import { useBankBalance } from "./BankAccountBalance";
 import { getExplorerAddressUrl } from "@/lib/utils";
 import { treasuryVaultAddress } from "@/lib/contract";
 import { useToast } from "@/hooks/use-toast";
 
+// Supported chains for treasury funding
+const SUPPORTED_CHAINS = [
+  { id: "arc", name: "Arc Testnet", implemented: true },
+  { id: "ethereum", name: "Ethereum Sepolia", implemented: true },
+  { id: "base", name: "Base Sepolia", implemented: false },
+  { id: "arbitrum", name: "Arbitrum Sepolia", implemented: false },
+  { id: "polygon", name: "Polygon Amoy", implemented: false },
+] as const;
+
+export type SupportedChainId = typeof SUPPORTED_CHAINS[number]["id"];
+
 export function TreasuryFunding() {
   const [amount, setAmount] = useState("");
+  const [selectedChain, setSelectedChain] = useState<SupportedChainId>("arc");
   const [isDepositing, setIsDepositing] = useState(false);
   const [treasuryBalance, setTreasuryBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
   const [transferId, setTransferId] = useState<string | null>(null);
   const [transferStatus, setTransferStatus] = useState<"pending" | "complete" | "failed" | null>(null);
   const { toast } = useToast();
+  const { balance: bankBalance, deductFromBalance } = useBankBalance();
 
   // Fetch treasury balance on mount
   useEffect(() => {
@@ -50,50 +65,53 @@ export function TreasuryFunding() {
       return;
     }
 
+    // Check if bank balance is sufficient
+    if (parseFloat(amount) > bankBalance) {
+      toast({
+        title: "Insufficient Bank Balance",
+        description: `You only have $${formatNumber(bankBalance)} in your bank account.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsDepositing(true);
     setTransferStatus("pending");
 
     try {
-      // Call Circle Gateway API to deposit fiat → USDC to contract
-      const response = await depositToGateway(amount);
+      // Step 1: Deduct from bank balance (simulate Circle Mint)
+      deductFromBalance(parseFloat(amount));
+
+      toast({
+        title: "Bank Transfer Initiated",
+        description: `Converting $${formatNumber(parseFloat(amount))} USD to USDC...`,
+      });
+
+      // Step 2: Call mock-mint API to deposit USDC to treasury
+      const response = await mockMintAndDeposit(amount, selectedChain);
 
       if (!response.success || !response.data) {
+        // Refund bank balance if deposit failed
+        deductFromBalance(-parseFloat(amount));
         throw new Error(response.error || "Deposit failed");
       }
 
-      const { transferId: newTransferId } = response.data;
-      setTransferId(newTransferId);
+      const { transactionHash, destinationChain, type } = response.data;
+      setTransferId(transactionHash);
 
+      setTransferStatus("complete");
       toast({
-        title: "Deposit Initiated",
-        description: `Depositing $${formatNumber(parseFloat(amount))} to treasury...`,
+        title: "✅ Deposit Complete",
+        description: `$${formatNumber(parseFloat(amount))} successfully deposited to ${destinationChain}!`,
       });
 
-      // Poll for transfer completion
-      const statusResponse = await pollGatewayAttestation(newTransferId);
+      // Refresh treasury balance
+      await fetchTreasuryBalance();
 
-      if (statusResponse.success && statusResponse.data && statusResponse.data.status === "complete") {
-        setTransferStatus("complete");
-        toast({
-          title: "✅ Deposit Complete",
-          description: `$${formatNumber(parseFloat(amount))} successfully deposited to treasury!`,
-        });
-
-        // Refresh treasury balance
-        await fetchTreasuryBalance();
-
-        // Reset form
-        setAmount("");
-        setTransferId(null);
-        setTimeout(() => setTransferStatus(null), 3000);
-      } else {
-        setTransferStatus("failed");
-        toast({
-          title: "❌ Deposit Failed",
-          description: !statusResponse.success ? statusResponse.error : "Transfer timed out or failed.",
-          variant: "destructive",
-        });
-      }
+      // Reset form
+      setAmount("");
+      setTransferId(null);
+      setTimeout(() => setTransferStatus(null), 3000);
     } catch (error: any) {
       console.error("Deposit error:", error);
       setTransferStatus("failed");
@@ -115,53 +133,48 @@ export function TreasuryFunding() {
           Treasury Funding
         </CardTitle>
         <CardDescription>
-          Deposit fiat (USD) → USDC directly to the TreasuryVault contract via Circle Gateway
+          Transfer from your bank account (USD) → Convert to USDC → Deposit to Treasury on selected chain
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Current Treasury Balance */}
-        <div className="p-4 bg-white rounded-lg border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 font-medium">Current On-Chain Balance</p>
-              {isLoadingBalance ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                  <span className="text-sm text-gray-400">Loading...</span>
-                </div>
-              ) : (
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  ${treasuryBalance ? formatNumber(parseFloat(treasuryBalance)) : "0.00"}
-                </p>
-              )}
-            </div>
-            <a
-              href={getExplorerAddressUrl(treasuryVaultAddress)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium"
-            >
-              View on ArcScan
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-        </div>
-
         {/* Deposit Form */}
         <div className="space-y-3">
           <div>
-            <Label htmlFor="deposit-amount">Deposit Amount (USD)</Label>
+            <Label htmlFor="deposit-amount">Transfer from Bank Account (USD)</Label>
             <Input
               id="deposit-amount"
               type="number"
-              placeholder="1000000"
+              placeholder="100"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               disabled={isDepositing}
               className="mt-1"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Circle will convert USD → USDC and send directly to the Arc contract
+              Funds will be converted to USDC via Circle Mint and deposited to the selected chain
+            </p>
+          </div>
+
+          {/* Chain Selector */}
+          <div>
+            <Label htmlFor="chain-select">Destination Chain</Label>
+            <Select value={selectedChain} onValueChange={(value) => setSelectedChain(value as SupportedChainId)}>
+              <SelectTrigger id="chain-select" className="mt-1">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_CHAINS.map((chain) => (
+                  <SelectItem key={chain.id} value={chain.id}>
+                    {chain.name}
+                    {!chain.implemented && " (Coming Soon)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 mt-1">
+              {selectedChain === "arc"
+                ? "USDC will be deposited directly to TreasuryVault on Arc"
+                : "USDC will be deposited to Circle Gateway wallet on this chain"}
             </p>
           </div>
 
@@ -225,8 +238,10 @@ export function TreasuryFunding() {
         {/* Info Notice */}
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-xs text-yellow-800">
-            💡 <strong>Direct to Contract:</strong> Funds are deposited directly to the TreasuryVault
-            contract on Arc Testnet. No intermediate Circle wallet needed.
+            💡 <strong>How it works:</strong> Your bank USD is converted to USDC via Circle Mint, then deposited to{" "}
+            {selectedChain === "arc"
+              ? "the TreasuryVault contract on Arc (direct deposit)"
+              : "Circle Gateway wallet on " + SUPPORTED_CHAINS.find(c => c.id === selectedChain)?.name + " (unified balance)"}
           </p>
         </div>
       </CardContent>

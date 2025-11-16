@@ -9,6 +9,8 @@ import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
 import { TreasuryFunding } from "@/components/TreasuryFunding";
 import { CreatePotModal } from "@/components/CreatePotModal";
+import { BankAccountBalance } from "@/components/BankAccountBalance";
+import { MultiChainBalances } from "@/components/MultiChainBalances";
 import { treasuryContract } from "@/lib/wagmi";
 import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
 import { stringToBytes32, formatUSDC, formatNumber } from "@/lib/utils";
@@ -82,8 +84,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Treasury Funding Section (REST API) - CFO Only */}
-      {roleInfo.permissions.depositFunds && <TreasuryFunding />}
+      {/* Treasury Funding Section with Bank Account Balance (CFO Only) */}
+      {roleInfo.permissions.depositFunds && (
+        <div className="flex gap-4 items-start">
+          <div className="flex-1">
+            <TreasuryFunding />
+          </div>
+          <div className="w-80">
+            <BankAccountBalance />
+          </div>
+        </div>
+      )}
 
       {/* Total Treasury Balance (Web3) */}
       <Card className="card-shadow border-2">
@@ -128,6 +139,9 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Multi-Chain Balances */}
+      <MultiChainBalances />
 
       {/* Department Pots (Web3) */}
       <div>
