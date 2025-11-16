@@ -62,34 +62,37 @@ const CHAINS = {
     name: "Ethereum Sepolia",
     domainId: 0,
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address,
+    gatewayWallet: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address,
   },
   base: {
     chain: baseSepolia,
     name: "Base Sepolia",
     domainId: 6,
     usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address,
+    gatewayWallet: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address,
   },
   arbitrum: {
     chain: arbitrumSepolia,
     name: "Arbitrum Sepolia",
     domainId: 3,
     usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" as Address,
+    gatewayWallet: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address,
   },
   polygon: {
     chain: polygonAmoy,
     name: "Polygon Amoy",
     domainId: 7,
     usdcAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" as Address,
+    gatewayWallet: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address,
   },
   avalanche: {
     chain: avalancheFuji,
     name: "Avalanche Fuji",
     domainId: 1,
     usdcAddress: "0x5425890298aed601595a70ab815c96711a31bc65" as Address,
+    gatewayWallet: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address,
   },
 };
-
-const GATEWAY_WALLET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address;
 
 type ChainKey = keyof typeof CHAINS;
 type DepositStatus =
@@ -313,8 +316,8 @@ export function MultiChainGatewayFunding() {
           },
         ],
         functionName: "approve",
-        args: [GATEWAY_WALLET, amount],
-        chain: undefined,
+        args: [chainConfig.gatewayWallet, amount],
+        chain: chainConfig.chain,
         account: address,
         gas: 100000n, // Set explicit gas limit for approval
       });
@@ -334,7 +337,7 @@ export function MultiChainGatewayFunding() {
       });
 
       const depositTx = await walletClient.writeContract({
-        address: GATEWAY_WALLET,
+        address: chainConfig.gatewayWallet,
         abi: [
           {
             name: "deposit",
@@ -349,7 +352,7 @@ export function MultiChainGatewayFunding() {
         ],
         functionName: "deposit",
         args: [chainConfig.usdcAddress, amount],
-        chain: undefined,
+        chain: chainConfig.chain,
         account: address,
         gas: 500000n, // Set explicit gas limit to avoid chain cap issues
       });
