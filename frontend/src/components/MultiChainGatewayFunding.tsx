@@ -262,16 +262,29 @@ export function MultiChainGatewayFunding() {
 
     const chainConfig = CHAINS[selectedChain];
 
-    // Switch to the selected chain
-    try {
-      await switchChain({ chainId: chainConfig.chain.id });
-    } catch (error) {
-      toast({
-        title: "Failed to switch chain",
-        description: `Please switch to ${chainConfig.name} manually`,
-        variant: "destructive",
-      });
-      return;
+    // Check if already on the correct chain
+    const currentChainId = await walletClient.getChainId();
+    if (currentChainId !== chainConfig.chain.id) {
+      // Switch to the selected chain
+      try {
+        await switchChain({ chainId: chainConfig.chain.id });
+
+        // Wait for chain switch to complete (give wallet time to update)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Verify chain switch was successful
+        const newChainId = await walletClient.getChainId();
+        if (newChainId !== chainConfig.chain.id) {
+          throw new Error(`Chain switch failed. Expected ${chainConfig.chain.id}, got ${newChainId}`);
+        }
+      } catch (error: any) {
+        toast({
+          title: "Failed to switch chain",
+          description: error.message || `Please switch to ${chainConfig.name} manually`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsDepositing(true);
@@ -317,7 +330,6 @@ export function MultiChainGatewayFunding() {
         ],
         functionName: "approve",
         args: [chainConfig.gatewayWallet, amount],
-        chain: chainConfig.chain,
         account: address,
         gas: 100000n, // Set explicit gas limit for approval
       });
@@ -352,7 +364,6 @@ export function MultiChainGatewayFunding() {
         ],
         functionName: "deposit",
         args: [chainConfig.usdcAddress, amount],
-        chain: chainConfig.chain,
         account: address,
         gas: 500000n, // Set explicit gas limit to avoid chain cap issues
       });
