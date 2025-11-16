@@ -271,7 +271,7 @@ async function submitBurnIntent(
       throw new Error(`Gateway API error (${response.status}): ${errorText}`);
     }
 
-    const result = await response.json();
+    const result: any = await response.json();
 
     // Log the actual response for debugging
     console.log('\n  API Response:');
