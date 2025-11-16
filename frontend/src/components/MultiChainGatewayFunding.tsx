@@ -267,6 +267,12 @@ export function MultiChainGatewayFunding() {
     try {
       const amount = parseUnits(depositAmount, 6);
 
+      // Create a fresh publicClient for this specific chain
+      const chainClient = createPublicClient({
+        chain: chainConfig.chain,
+        transport: http(),
+      });
+
       // Step 1: Approve Gateway Wallet
       console.log('\n📝 Step 1: Approving Gateway Wallet...');
       toast({
@@ -292,12 +298,13 @@ export function MultiChainGatewayFunding() {
         args: [GATEWAY_WALLET, amount],
         chain: undefined,
         account: address,
+        gas: 100000n, // Set explicit gas limit for approval
       });
 
       console.log(`  ✓ Approval transaction submitted: ${approveTx}`);
       console.log(`  ⏳ Waiting for approval confirmation...`);
 
-      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      await chainClient.waitForTransactionReceipt({ hash: approveTx });
       console.log(`  ✓ Approval confirmed!`);
       console.log(`  Explorer: ${chainConfig.chain.blockExplorers?.default.url}/tx/${approveTx}`);
 
@@ -326,12 +333,13 @@ export function MultiChainGatewayFunding() {
         args: [chainConfig.usdcAddress, amount],
         chain: undefined,
         account: address,
+        gas: 500000n, // Set explicit gas limit to avoid chain cap issues
       });
 
       console.log(`  ✓ Deposit transaction submitted: ${depositTx}`);
       console.log(`  ⏳ Waiting for deposit confirmation...`);
 
-      const receipt = await publicClient.waitForTransactionReceipt({
+      const receipt = await chainClient.waitForTransactionReceipt({
         hash: depositTx,
       });
 
