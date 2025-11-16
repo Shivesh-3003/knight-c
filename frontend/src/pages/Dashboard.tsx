@@ -67,6 +67,21 @@ export default function Dashboard() {
     console.log("[Dashboard] Balance error:", isBalanceError);
   }, [isConnected, roleInfo, balance, isLoadingBalance, isBalanceError]);
 
+  // Listen for treasury balance updates from MultiChainGatewayFunding component
+  useEffect(() => {
+    const handleBalanceUpdate = () => {
+      console.log("[Dashboard] Treasury balance update event received, refetching...");
+      refetchBalance();
+      refetchPots();
+    };
+
+    window.addEventListener('treasury-balance-updated', handleBalanceUpdate);
+
+    return () => {
+      window.removeEventListener('treasury-balance-updated', handleBalanceUpdate);
+    };
+  }, [refetchBalance, refetchPots]);
+
   // Transform contract data into Pot objects
   const pots: Pot[] = POT_IDS.map((potId, index) => {
     const potData = potsData?.[index];
