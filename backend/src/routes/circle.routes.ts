@@ -448,13 +448,6 @@ router.get('/treasury-balance', async (req, res) => {
 router.post('/transfer-to-treasury', async (req, res) => {
   try {
     const { amount, recipientAddress } = req.body;
- * POST /api/circle/mock-mint
- * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
- * Transfers USDC from a test wallet to the treasury based on selected chain
- */
-router.post('/mock-mint', async (req, res) => {
-  try {
-    const { amount, destinationChain } = req.body;
 
     if (!amount) {
       return res.status(400).json({
@@ -504,6 +497,51 @@ router.post('/mock-mint', async (req, res) => {
       success: false,
       error: error.message || 'Transfer failed',
       details: error.response?.data || error.toString(),
+    });
+  }
+});
+
+/**
+ * POST /api/circle/mock-mint
+ * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
+ * Transfers USDC from a test wallet to the treasury based on selected chain
+ */
+router.post('/mock-mint', async (req, res) => {
+  try {
+    const { amount, destinationChain } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount is required',
+      });
+    }
+
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
+    if (!treasuryAddress) {
+      return res.status(500).json({
+        success: false,
+        error: 'Treasury contract address not configured',
+      });
+    }
+
+    // Mock implementation - you can implement actual logic here
+    console.log(`Mock minting ${amount} USDC on ${destinationChain || 'arc'}`);
+
+    res.json({
+      success: true,
+      data: {
+        amount,
+        destinationChain: destinationChain || 'arc',
+        treasuryAddress,
+        message: 'Mock mint completed successfully',
+      },
+    });
+  } catch (error: any) {
+    console.error('Mock mint failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Mock mint failed',
     });
   }
 });
