@@ -6,57 +6,91 @@
  * 2. Transfer from unified balance to Arc treasury (instant)
  */
 
-import { useState, useEffect } from 'react';
-import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from 'wagmi';
-import { parseUnits, formatUnits, type Address } from 'viem';
-import { sepolia, baseSepolia, arbitrumSepolia, polygonAmoy, avalancheFuji } from 'viem/chains';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, Clock, XCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from "react";
+import {
+  useAccount,
+  useWalletClient,
+  usePublicClient,
+  useSwitchChain,
+} from "wagmi";
+import { parseUnits, formatUnits, type Address } from "viem";
+import {
+  sepolia,
+  baseSepolia,
+  arbitrumSepolia,
+  polygonAmoy,
+  avalancheFuji,
+} from "viem/chains";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  CheckCircle2,
+  Clock,
+  XCircle,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // Chain configurations
 const CHAINS = {
   sepolia: {
     chain: sepolia,
-    name: 'Ethereum Sepolia',
+    name: "Ethereum Sepolia",
     domainId: 0,
-    usdcAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address,
+    usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address,
   },
   base: {
     chain: baseSepolia,
-    name: 'Base Sepolia',
+    name: "Base Sepolia",
     domainId: 6,
-    usdcAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address,
+    usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address,
   },
   arbitrum: {
     chain: arbitrumSepolia,
-    name: 'Arbitrum Sepolia',
+    name: "Arbitrum Sepolia",
     domainId: 3,
-    usdcAddress: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d' as Address,
+    usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" as Address,
   },
   polygon: {
     chain: polygonAmoy,
-    name: 'Polygon Amoy',
+    name: "Polygon Amoy",
     domainId: 7,
-    usdcAddress: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582' as Address,
+    usdcAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" as Address,
   },
   avalanche: {
     chain: avalancheFuji,
-    name: 'Avalanche Fuji',
+    name: "Avalanche Fuji",
     domainId: 1,
-    usdcAddress: '0x5425890298aed601595a70ab815c96711a31bc65' as Address,
+    usdcAddress: "0x5425890298aed601595a70ab815c96711a31bc65" as Address,
   },
 };
 
-const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
+const GATEWAY_WALLET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address;
 
 type ChainKey = keyof typeof CHAINS;
-type DepositStatus = 'not_started' | 'depositing' | 'waiting_finality' | 'ready' | 'error';
+type DepositStatus =
+  | "not_started"
+  | "depositing"
+  | "waiting_finality"
+  | "ready"
+  | "error";
 
 interface ChainStatus {
   status: DepositStatus;
@@ -73,25 +107,27 @@ export function MultiChainGatewayFunding() {
   const { toast } = useToast();
 
   // Step 1: Deposit to Gateway
-  const [selectedChain, setSelectedChain] = useState<ChainKey>('base');
-  const [depositAmount, setDepositAmount] = useState('5');
-  const [chainStatuses, setChainStatuses] = useState<Record<ChainKey, ChainStatus>>({
-    sepolia: { status: 'not_started' },
-    base: { status: 'not_started' },
-    arbitrum: { status: 'not_started' },
-    polygon: { status: 'not_started' },
-    avalanche: { status: 'not_started' },
+  const [selectedChain, setSelectedChain] = useState<ChainKey>("base");
+  const [depositAmount, setDepositAmount] = useState("5");
+  const [chainStatuses, setChainStatuses] = useState<
+    Record<ChainKey, ChainStatus>
+  >({
+    sepolia: { status: "not_started" },
+    base: { status: "not_started" },
+    arbitrum: { status: "not_started" },
+    polygon: { status: "not_started" },
+    avalanche: { status: "not_started" },
   });
   const [isDepositing, setIsDepositing] = useState(false);
 
   // Step 2: Transfer from unified balance
-  const [unifiedBalance, setUnifiedBalance] = useState('0');
-  const [transferAmount, setTransferAmount] = useState('');
+  const [unifiedBalance, setUnifiedBalance] = useState("0");
+  const [transferAmount, setTransferAmount] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
 
   // Load chain statuses from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('gateway-chain-statuses');
+    const saved = localStorage.getItem("gateway-chain-statuses");
     if (saved) {
       setChainStatuses(JSON.parse(saved));
     }
@@ -112,14 +148,14 @@ export function MultiChainGatewayFunding() {
         setUnifiedBalance(data.data.balance);
       }
     } catch (error) {
-      console.error('Failed to fetch unified balance:', error);
+      console.error("Failed to fetch unified balance:", error);
     }
   };
 
   // Monitor pending deposits for finality
   useEffect(() => {
     const pendingDeposits = Object.entries(chainStatuses).filter(
-      ([_, status]) => status.status === 'waiting_finality'
+      ([_, status]) => status.status === "waiting_finality"
     );
 
     if (pendingDeposits.length === 0) return;
@@ -137,12 +173,14 @@ export function MultiChainGatewayFunding() {
           // Finality reached!
           setChainStatuses((prev) => ({
             ...prev,
-            [chainKey]: { ...status, status: 'ready' },
+            [chainKey]: { ...status, status: "ready" },
           }));
 
           toast({
-            title: '✅ Deposit Finalized!',
-            description: `${CHAINS[chainKey as ChainKey].name} deposit is ready. You can now transfer instantly to Arc!`,
+            title: "✅ Deposit Finalized!",
+            description: `${
+              CHAINS[chainKey as ChainKey].name
+            } deposit is ready. You can now transfer instantly to Arc!`,
           });
 
           fetchUnifiedBalance();
@@ -161,15 +199,18 @@ export function MultiChainGatewayFunding() {
 
   // Save statuses to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('gateway-chain-statuses', JSON.stringify(chainStatuses));
+    localStorage.setItem(
+      "gateway-chain-statuses",
+      JSON.stringify(chainStatuses)
+    );
   }, [chainStatuses]);
 
   const handleDepositToGateway = async () => {
     if (!walletClient || !address) {
       toast({
-        title: 'Wallet not connected',
-        description: 'Please connect your wallet first',
-        variant: 'destructive',
+        title: "Wallet not connected",
+        description: "Please connect your wallet first",
+        variant: "destructive",
       });
       return;
     }
@@ -181,9 +222,9 @@ export function MultiChainGatewayFunding() {
       await switchChain({ chainId: chainConfig.chain.id });
     } catch (error) {
       toast({
-        title: 'Failed to switch chain',
+        title: "Failed to switch chain",
         description: `Please switch to ${chainConfig.name} manually`,
-        variant: 'destructive',
+        variant: "destructive",
       });
       return;
     }
@@ -191,7 +232,7 @@ export function MultiChainGatewayFunding() {
     setIsDepositing(true);
     setChainStatuses((prev) => ({
       ...prev,
-      [selectedChain]: { status: 'depositing' },
+      [selectedChain]: { status: "depositing" },
     }));
 
     try {
@@ -199,80 +240,84 @@ export function MultiChainGatewayFunding() {
 
       // Step 1: Approve Gateway Wallet
       toast({
-        title: 'Approval Required',
-        description: 'Please approve the Gateway Wallet to spend your USDC',
+        title: "Approval Required",
+        description: "Please approve the Gateway Wallet to spend your USDC",
       });
 
       const approveTx = await walletClient.writeContract({
         address: chainConfig.usdcAddress,
         abi: [
           {
-            name: 'approve',
-            type: 'function',
-            stateMutability: 'nonpayable',
+            name: "approve",
+            type: "function",
+            stateMutability: "nonpayable",
             inputs: [
-              { name: 'spender', type: 'address' },
-              { name: 'amount', type: 'uint256' },
+              { name: "spender", type: "address" },
+              { name: "amount", type: "uint256" },
             ],
-            outputs: [{ type: 'bool' }],
+            outputs: [{ type: "bool" }],
           },
         ],
-        functionName: 'approve',
+        functionName: "approve",
         args: [GATEWAY_WALLET, amount],
+        chain: undefined,
       });
 
       await publicClient.waitForTransactionReceipt({ hash: approveTx });
 
       // Step 2: Deposit to Gateway Wallet
       toast({
-        title: 'Depositing to Gateway',
-        description: 'Please confirm the deposit transaction',
+        title: "Depositing to Gateway",
+        description: "Please confirm the deposit transaction",
       });
 
       const depositTx = await walletClient.writeContract({
         address: GATEWAY_WALLET,
         abi: [
           {
-            name: 'deposit',
-            type: 'function',
-            stateMutability: 'nonpayable',
+            name: "deposit",
+            type: "function",
+            stateMutability: "nonpayable",
             inputs: [
-              { name: 'token', type: 'address' },
-              { name: 'value', type: 'uint256' },
+              { name: "token", type: "address" },
+              { name: "value", type: "uint256" },
             ],
             outputs: [],
           },
         ],
-        functionName: 'deposit',
+        functionName: "deposit",
         args: [chainConfig.usdcAddress, amount],
+        chain: undefined,
       });
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: depositTx });
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: depositTx,
+      });
 
       // Update status to waiting for finality
       setChainStatuses((prev) => ({
         ...prev,
         [selectedChain]: {
-          status: 'waiting_finality',
+          status: "waiting_finality",
           depositTxHash: depositTx,
           depositBlock: Number(receipt.blockNumber),
         },
       }));
 
       toast({
-        title: '✅ Deposit Successful!',
+        title: "✅ Deposit Successful!",
         description: `Waiting for finality (~12-15 min). You can close this page and come back later.`,
       });
     } catch (error: any) {
-      console.error('Deposit failed:', error);
+      console.error("Deposit failed:", error);
       setChainStatuses((prev) => ({
         ...prev,
-        [selectedChain]: { status: 'error' },
+        [selectedChain]: { status: "error" },
       }));
       toast({
-        title: 'Deposit Failed',
-        description: error.message || 'An error occurred',
-        variant: 'destructive',
+        title: "Deposit Failed",
+        description: error.message || "An error occurred",
+        variant: "destructive",
       });
     } finally {
       setIsDepositing(false);
@@ -289,9 +334,9 @@ export function MultiChainGatewayFunding() {
 
     setIsTransferring(true);
     try {
-      const response = await fetch('/api/circle/transfer-to-treasury', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/circle/transfer-to-treasury", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: transferAmount,
           recipientAddress: address,
@@ -302,19 +347,19 @@ export function MultiChainGatewayFunding() {
 
       if (data.success) {
         toast({
-          title: '✅ Treasury Funded!',
+          title: "✅ Treasury Funded!",
           description: `${transferAmount} USDC transferred to treasury on Arc`,
         });
         fetchUnifiedBalance();
-        setTransferAmount('');
+        setTransferAmount("");
       } else {
         throw new Error(data.error);
       }
     } catch (error: any) {
       toast({
-        title: 'Transfer Failed',
+        title: "Transfer Failed",
         description: error.message,
-        variant: 'destructive',
+        variant: "destructive",
       });
     } finally {
       setIsTransferring(false);
@@ -323,12 +368,12 @@ export function MultiChainGatewayFunding() {
 
   const getStatusIcon = (status: DepositStatus) => {
     switch (status) {
-      case 'ready':
+      case "ready":
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'waiting_finality':
-      case 'depositing':
+      case "waiting_finality":
+      case "depositing":
         return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'error':
+      case "error":
         return <XCircle className="h-4 w-4 text-red-500" />;
       default:
         return <XCircle className="h-4 w-4 text-gray-300" />;
@@ -337,20 +382,21 @@ export function MultiChainGatewayFunding() {
 
   const getStatusText = (status: DepositStatus, chainStatus?: ChainStatus) => {
     switch (status) {
-      case 'ready':
-        return 'Ready';
-      case 'waiting_finality':
+      case "ready":
+        return "Ready";
+      case "waiting_finality":
         if (chainStatus?.depositBlock && chainStatus?.currentBlock) {
-          const confirmations = chainStatus.currentBlock - chainStatus.depositBlock;
+          const confirmations =
+            chainStatus.currentBlock - chainStatus.depositBlock;
           return `${confirmations}/32 confirmations`;
         }
-        return 'Waiting for finality';
-      case 'depositing':
-        return 'Depositing...';
-      case 'error':
-        return 'Error';
+        return "Waiting for finality";
+      case "depositing":
+        return "Depositing...";
+      case "error":
+        return "Error";
       default:
-        return 'Not funded';
+        return "Not funded";
     }
   };
 
@@ -359,10 +405,13 @@ export function MultiChainGatewayFunding() {
       {/* Step 1: Build Unified Balance */}
       <Card>
         <CardHeader>
-          <CardTitle>Step 1: Build Unified Balance (One-time per chain)</CardTitle>
+          <CardTitle>
+            Step 1: Build Unified Balance (One-time per chain)
+          </CardTitle>
           <CardDescription>
-            Deposit USDC from any chain to create a unified balance. This is a one-time setup per chain.
-            After finality (~12-15 min), all future transfers will be instant!
+            Deposit USDC from any chain to create a unified balance. This is a
+            one-time setup per chain. After finality (~12-15 min), all future
+            transfers will be instant!
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -374,14 +423,20 @@ export function MultiChainGatewayFunding() {
                 <div
                   key={key}
                   className={`p-3 border rounded-lg ${
-                    selectedChain === key ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    selectedChain === key
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     {getStatusIcon(chainStatus.status)}
-                    <span className="text-sm font-medium">{CHAINS[key].name.split(' ')[0]}</span>
+                    <span className="text-sm font-medium">
+                      {CHAINS[key].name.split(" ")[0]}
+                    </span>
                   </div>
-                  <p className="text-xs text-gray-500">{getStatusText(chainStatus.status, chainStatus)}</p>
+                  <p className="text-xs text-gray-500">
+                    {getStatusText(chainStatus.status, chainStatus)}
+                  </p>
                 </div>
               );
             })}
@@ -392,7 +447,10 @@ export function MultiChainGatewayFunding() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="chain">Select Chain</Label>
-                <Select value={selectedChain} onValueChange={(value) => setSelectedChain(value as ChainKey)}>
+                <Select
+                  value={selectedChain}
+                  onValueChange={(value) => setSelectedChain(value as ChainKey)}
+                >
                   <SelectTrigger id="chain">
                     <SelectValue />
                   </SelectTrigger>
@@ -422,8 +480,9 @@ export function MultiChainGatewayFunding() {
 
             <Alert>
               <AlertDescription>
-                💡 You need at least <strong>{depositAmount} USDC + 2.01 USDC</strong> for the transfer fee.
-                Get testnet USDC from{' '}
+                💡 You need at least{" "}
+                <strong>{depositAmount} USDC + 2.01 USDC</strong> for the
+                transfer fee. Get testnet USDC from{" "}
                 <a
                   href="https://faucet.circle.com"
                   target="_blank"
@@ -446,7 +505,7 @@ export function MultiChainGatewayFunding() {
                   Depositing to Gateway...
                 </>
               ) : (
-                'Deposit to Gateway'
+                "Deposit to Gateway"
               )}
             </Button>
           </div>
@@ -457,20 +516,28 @@ export function MultiChainGatewayFunding() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            Step 2: Fund Treasury <ArrowRight className="h-5 w-5" /> Instant Transfer
+            Step 2: Fund Treasury <ArrowRight className="h-5 w-5" /> Instant
+            Transfer
           </CardTitle>
           <CardDescription>
-            Transfer from your unified balance to Arc treasury. This is instant (<500ms) once your deposits are finalized!
+            Transfer from your unified balance to Arc treasury. This is instant
+            (under 500ms) once your deposits are finalized!
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Unified Balance (available across all chains)</p>
-            <p className="text-3xl font-bold text-blue-600">{unifiedBalance} USDC</p>
+            <p className="text-sm text-gray-600 mb-1">
+              Unified Balance (available across all chains)
+            </p>
+            <p className="text-3xl font-bold text-blue-600">
+              {unifiedBalance} USDC
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="transferAmount">Amount to Transfer to Treasury</Label>
+            <Label htmlFor="transferAmount">
+              Amount to Transfer to Treasury
+            </Label>
             <Input
               id="transferAmount"
               type="number"
@@ -481,12 +548,19 @@ export function MultiChainGatewayFunding() {
               max={unifiedBalance}
               step="0.000001"
             />
-            <p className="text-xs text-gray-500">Maximum: {unifiedBalance} USDC</p>
+            <p className="text-xs text-gray-500">
+              Maximum: {unifiedBalance} USDC
+            </p>
           </div>
 
           <Button
             onClick={handleTransferToTreasury}
-            disabled={isTransferring || !address || !transferAmount || Number(transferAmount) > Number(unifiedBalance)}
+            disabled={
+              isTransferring ||
+              !address ||
+              !transferAmount ||
+              Number(transferAmount) > Number(unifiedBalance)
+            }
             className="w-full"
           >
             {isTransferring ? (
@@ -495,14 +569,15 @@ export function MultiChainGatewayFunding() {
                 Transferring to Arc...
               </>
             ) : (
-              'Transfer to Arc Treasury (Instant!)'
+              "Transfer to Arc Treasury (Instant!)"
             )}
           </Button>
 
           {Number(unifiedBalance) === 0 && (
             <Alert>
               <AlertDescription>
-                ⚠️ No unified balance available. Complete Step 1 first and wait for finality.
+                ⚠️ No unified balance available. Complete Step 1 first and wait
+                for finality.
               </AlertDescription>
             </Alert>
           )}

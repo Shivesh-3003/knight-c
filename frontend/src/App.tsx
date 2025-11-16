@@ -18,38 +18,6 @@ import { Funding } from "./pages/Funding";
 
 const queryClient = new QueryClient();
 
-<<<<<<< Updated upstream
-const App = () => (
-  <WagmiProvider config={config}>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <RequireWallet>
-                  <Layout />
-                </RequireWallet>
-              }
-            >
-              <Route index element={<Dashboard />} />
-              <Route path="approvals" element={<Approvals />} />
-              <Route path="scheduled" element={<ScheduledFlows />} />
-              <Route path="compliance" element={<Compliance />} />
-              <Route path="funding" element={<Funding />} />
-              <Route path="walletgateway" element={<WalletGateway />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </WagmiProvider>
-);
-=======
 const App = () => {
   // Clear mocked Ethereum balance on page load (ensures fresh start after refresh)
   useEffect(() => {
@@ -76,6 +44,7 @@ const App = () => {
                 <Route path="approvals" element={<Approvals />} />
                 <Route path="scheduled" element={<ScheduledFlows />} />
                 <Route path="compliance" element={<Compliance />} />
+                <Route path="funding" element={<Funding />} />
                 <Route path="walletgateway" element={<WalletGateway />} />
               </Route>
               <Route path="*" element={<NotFound />} />
@@ -86,6 +55,5 @@ const App = () => {
     </WagmiProvider>
   );
 };
->>>>>>> Stashed changes
 
 export default App;
