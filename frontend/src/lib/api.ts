@@ -7,6 +7,7 @@ import type {
   TreasuryDepositResponse,
   BalanceResponse,
   TreasuryBalanceResponse,
+  MockMintResponse,
 } from "@/types/api.types";
 import { POLLING_INTERVAL, MAX_POLLING_ATTEMPTS } from "./constants";
 
@@ -240,4 +241,30 @@ export async function pollGatewayAttestation(
     success: false,
     error: "Gateway attestation polling timeout",
   };
+}
+
+/**
+ * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
+ * @param amount - Amount in USD
+ * @param destinationChain - Chain to deposit to (arc, ethereum, base, arbitrum, polygon)
+ */
+export async function mockMintAndDeposit(
+  amount: string,
+  destinationChain: string
+): Promise<ApiResponse<MockMintResponse>> {
+  try {
+    const response = await api.post<ApiResponse<MockMintResponse>>(
+      "/api/circle/mock-mint",
+      { amount, destinationChain }
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
 }

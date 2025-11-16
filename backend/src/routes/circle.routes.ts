@@ -435,4 +435,97 @@ router.get('/treasury-balance', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/circle/mock-mint
+ * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
+ * Transfers USDC from a test wallet to the treasury based on selected chain
+ */
+router.post('/mock-mint', async (req, res) => {
+  try {
+    const { amount, destinationChain } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount is required',
+      });
+    }
+
+    if (!destinationChain) {
+      return res.status(400).json({
+        success: false,
+        error: 'Destination chain is required',
+      });
+    }
+
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
+    if (!treasuryAddress) {
+      return res.status(500).json({
+        success: false,
+        error: 'TREASURY_CONTRACT_ADDRESS not configured in environment',
+      });
+    }
+
+    // Handle different destination chains
+    let result;
+
+    if (destinationChain === 'arc') {
+      // Arc: Direct deposit to TreasuryVault contract
+      // Step 1: Transfer USDC from test wallet to backend wallet (simulates Circle Mint)
+      // Step 2: Approve TreasuryVault to spend USDC
+      // Step 3: Call depositToTreasury()
+
+      console.log(`[Mock Mint] Depositing ${amount} USDC to TreasuryVault on Arc...`);
+      const depositHash = await circleService.depositToTreasury(amount, treasuryAddress as `0x${string}`);
+
+      result = {
+        transactionHash: depositHash,
+        amount,
+        destinationChain: 'Arc Testnet',
+        destination: treasuryAddress,
+        type: 'treasury_deposit',
+      };
+    } else if (destinationChain === 'ethereum') {
+      // Ethereum: Deposit to Gateway Wallet on Sepolia
+      // Step 1: Transfer USDC from test wallet to backend wallet (simulates Circle Mint)
+      // Step 2: Approve Gateway Wallet to spend USDC
+      // Step 3: Call deposit() on Gateway Wallet
+
+      console.log(`[Mock Mint] Depositing ${amount} USDC to Gateway Wallet on Ethereum Sepolia...`);
+      const depositResult = await circleService.depositToGateway(amount);
+
+      result = {
+        transactionHash: depositResult.depositHash,
+        amount,
+        destinationChain: 'Ethereum Sepolia',
+        destination: process.env.GATEWAY_WALLET_ADDRESS,
+        type: 'gateway_deposit',
+        estimatedFinality: depositResult.estimatedFinality,
+      };
+    } else {
+      // Base, Arbitrum, Polygon: Placeholder (coming soon)
+      console.log(`[Mock Mint] Placeholder deposit for ${destinationChain} (coming soon)`);
+      result = {
+        transactionHash: '0x' + '0'.repeat(64), // Mock tx hash
+        amount,
+        destinationChain: destinationChain.charAt(0).toUpperCase() + destinationChain.slice(1),
+        destination: 'Gateway Wallet (placeholder)',
+        type: 'gateway_deposit_placeholder',
+        note: 'This chain integration is coming soon',
+      };
+    }
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('[Mock Mint Error]', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Mock mint failed',
+    });
+  }
+});
+
 export default router;

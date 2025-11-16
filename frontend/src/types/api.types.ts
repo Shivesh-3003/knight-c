@@ -83,3 +83,16 @@ export interface TreasuryBalanceData {
 }
 
 export type TreasuryBalanceResponse = TreasuryBalanceData;
+
+// ===== 8. POST /api/circle/mock-mint =====
+export interface MockMintData {
+  transactionHash: string;
+  amount: string;
+  destinationChain: string;
+  destination: string;
+  type: "treasury_deposit" | "gateway_deposit" | "gateway_deposit_placeholder";
+  estimatedFinality?: string;
+  note?: string;
+}
+
+export type MockMintResponse = MockMintData;
