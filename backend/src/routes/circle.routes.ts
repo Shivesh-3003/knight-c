@@ -436,6 +436,18 @@ router.get('/treasury-balance', async (req, res) => {
 });
 
 /**
+ * POST /api/circle/transfer-to-treasury
+ * Transfer from Gateway unified balance to Arc treasury (instant)
+ * This endpoint handles the full flow:
+ * 1. Create burn intent from unified balance
+ * 2. Sign with EIP-712
+ * 3. Submit to Gateway API
+ * 4. Mint on Arc
+ * 5. Deposit to treasury
+ */
+router.post('/transfer-to-treasury', async (req, res) => {
+  try {
+    const { amount, recipientAddress } = req.body;
  * POST /api/circle/mock-mint
  * Mock Circle Mint flow: Simulate USD → USDC conversion and deposit to treasury
  * Transfers USDC from a test wallet to the treasury based on selected chain
@@ -451,10 +463,10 @@ router.post('/mock-mint', async (req, res) => {
       });
     }
 
-    if (!destinationChain) {
+    if (!recipientAddress) {
       return res.status(400).json({
         success: false,
-        error: 'Destination chain is required',
+        error: 'Recipient address is required',
       });
     }
 
@@ -462,68 +474,36 @@ router.post('/mock-mint', async (req, res) => {
     if (!treasuryAddress) {
       return res.status(500).json({
         success: false,
-        error: 'TREASURY_CONTRACT_ADDRESS not configured in environment',
+        error: 'Treasury contract address not configured',
       });
     }
 
-    // Handle different destination chains
-    let result;
+    // Execute the full transfer flow
+    console.log(`Starting instant transfer: ${amount} USDC to treasury`);
 
-    if (destinationChain === 'arc') {
-      // Arc: Direct deposit to TreasuryVault contract
-      // Step 1: Transfer USDC from test wallet to backend wallet (simulates Circle Mint)
-      // Step 2: Approve TreasuryVault to spend USDC
-      // Step 3: Call depositToTreasury()
-
-      console.log(`[Mock Mint] Depositing ${amount} USDC to TreasuryVault on Arc...`);
-      const depositHash = await circleService.depositToTreasury(amount, treasuryAddress as `0x${string}`);
-
-      result = {
-        transactionHash: depositHash,
-        amount,
-        destinationChain: 'Arc Testnet',
-        destination: treasuryAddress,
-        type: 'treasury_deposit',
-      };
-    } else if (destinationChain === 'ethereum') {
-      // Ethereum: Deposit to Gateway Wallet on Sepolia
-      // Step 1: Transfer USDC from test wallet to backend wallet (simulates Circle Mint)
-      // Step 2: Approve Gateway Wallet to spend USDC
-      // Step 3: Call deposit() on Gateway Wallet
-
-      console.log(`[Mock Mint] Depositing ${amount} USDC to Gateway Wallet on Ethereum Sepolia...`);
-      const depositResult = await circleService.depositToGateway(amount);
-
-      result = {
-        transactionHash: depositResult.depositHash,
-        amount,
-        destinationChain: 'Ethereum Sepolia',
-        destination: process.env.GATEWAY_WALLET_ADDRESS,
-        type: 'gateway_deposit',
-        estimatedFinality: depositResult.estimatedFinality,
-      };
-    } else {
-      // Base, Arbitrum, Polygon: Placeholder (coming soon)
-      console.log(`[Mock Mint] Placeholder deposit for ${destinationChain} (coming soon)`);
-      result = {
-        transactionHash: '0x' + '0'.repeat(64), // Mock tx hash
-        amount,
-        destinationChain: destinationChain.charAt(0).toUpperCase() + destinationChain.slice(1),
-        destination: 'Gateway Wallet (placeholder)',
-        type: 'gateway_deposit_placeholder',
-        note: 'This chain integration is coming soon',
-      };
-    }
+    const result = await circleService.transferFromUnifiedBalanceToTreasury(
+      amount,
+      recipientAddress as `0x${string}`,
+      treasuryAddress as `0x${string}`
+    );
 
     res.json({
       success: true,
-      data: result,
+      data: {
+        ...result,
+        message: 'Treasury funded successfully via Circle Gateway',
+        explorerUrls: {
+          mint: `https://testnet.arcscan.app/tx/${result.mintTxHash}`,
+          treasury: `https://testnet.arcscan.app/tx/${result.treasuryTxHash}`,
+        },
+      },
     });
   } catch (error: any) {
-    console.error('[Mock Mint Error]', error);
+    console.error('Transfer to treasury failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Mock mint failed',
+      error: error.message || 'Transfer failed',
+      details: error.response?.data || error.toString(),
     });
   }
 });

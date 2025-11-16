@@ -1,9 +1,10 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, CheckCircle2, Calendar, Shield, Landmark } from "lucide-react";
+import { LayoutDashboard, CheckCircle2, Calendar, Shield, Landmark, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Fund Treasury", href: "/funding", icon: Wallet },
   { name: "Approvals", href: "/approvals", icon: CheckCircle2 },
   { name: "Scheduled Flows", href: "/scheduled", icon: Calendar },
   { name: "Compliance", href: "/compliance", icon: Shield },
