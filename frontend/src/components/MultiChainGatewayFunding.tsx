@@ -47,6 +47,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getGatewayBalance, transferToTreasury } from "@/lib/api";
 
 // Chain configurations
 const CHAINS = {
@@ -141,14 +142,19 @@ export function MultiChainGatewayFunding() {
   }, [address]);
 
   const fetchUnifiedBalance = async () => {
+    if (!address) return;
+
     try {
-      const response = await fetch(`/api/circle/balance/gateway/${address}`);
-      const data = await response.json();
-      if (data.success) {
-        setUnifiedBalance(data.data.balance);
+      const response = await getGatewayBalance(address);
+      if (response.success && response.data) {
+        setUnifiedBalance(response.data.balance);
+      } else {
+        console.error("Failed to fetch unified balance:", response.error);
+        setUnifiedBalance("0");
       }
     } catch (error) {
       console.error("Failed to fetch unified balance:", error);
+      setUnifiedBalance("0");
     }
   };
 
@@ -325,7 +331,16 @@ export function MultiChainGatewayFunding() {
   };
 
   const handleTransferToTreasury = async () => {
-    // This would call the backend API which handles:
+    if (!address) {
+      toast({
+        title: "Wallet not connected",
+        description: "Please connect your wallet first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // This calls the backend API which handles:
     // 1. Creating burn intent
     // 2. Signing with EIP-712
     // 3. Submitting to Gateway API
@@ -334,18 +349,9 @@ export function MultiChainGatewayFunding() {
 
     setIsTransferring(true);
     try {
-      const response = await fetch("/api/circle/transfer-to-treasury", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: transferAmount,
-          recipientAddress: address,
-        }),
-      });
+      const response = await transferToTreasury(transferAmount, address);
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (response.success) {
         toast({
           title: "✅ Treasury Funded!",
           description: `${transferAmount} USDC transferred to treasury on Arc`,
@@ -353,12 +359,12 @@ export function MultiChainGatewayFunding() {
         fetchUnifiedBalance();
         setTransferAmount("");
       } else {
-        throw new Error(data.error);
+        throw new Error(response.error || "Transfer failed");
       }
     } catch (error: any) {
       toast({
         title: "Transfer Failed",
-        description: error.message,
+        description: error.message || "An error occurred",
         variant: "destructive",
       });
     } finally {

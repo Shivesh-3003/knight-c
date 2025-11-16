@@ -268,3 +268,50 @@ export async function mockMintAndDeposit(
     return { success: false, error: "Unknown error occurred" };
   }
 }
+
+/**
+ * Get Circle Gateway unified USDC balance across all chains
+ * @param address - Wallet address
+ */
+export async function getGatewayBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/gateway/${address}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Transfer from Gateway unified balance to Arc treasury (instant)
+ * @param amount - Amount in USDC
+ * @param recipientAddress - Recipient wallet address
+ */
+export async function transferToTreasury(
+  amount: string,
+  recipientAddress: string
+): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.post<ApiResponse<any>>(
+      "/api/circle/transfer-to-treasury",
+      { amount, recipientAddress }
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
