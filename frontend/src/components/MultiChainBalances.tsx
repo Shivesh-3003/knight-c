@@ -1,10 +1,8 @@
-import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/utils";
-import { getArcBalance, getSepoliaBalance } from "@/lib/api";
-import { treasuryVaultAddress } from "@/lib/contract";
+import { useMultiChainBalances } from "@/hooks/useMultiChainBalances";
 
 // Chain configuration with icons and colors
 const CHAINS = [
@@ -39,7 +37,7 @@ const CHAINS = [
     bgColor: "bg-indigo-50",
     borderColor: "border-indigo-200",
     icon: "🔵",
-    implemented: false,
+    implemented: true,
   },
   {
     id: "arbitrum",
@@ -50,7 +48,7 @@ const CHAINS = [
     bgColor: "bg-cyan-50",
     borderColor: "border-cyan-200",
     icon: "🔺",
-    implemented: false,
+    implemented: true,
   },
   {
     id: "polygon",
@@ -61,157 +59,12 @@ const CHAINS = [
     bgColor: "bg-violet-50",
     borderColor: "border-violet-200",
     icon: "⬣",
-    implemented: false,
+    implemented: true,
   },
 ] as const;
 
-interface ChainBalance {
-  chain: string;
-  balance: string;
-  isLoading: boolean;
-  error: string | null;
-}
-
 export function MultiChainBalances() {
-  const [balances, setBalances] = useState<Record<string, ChainBalance>>(() => {
-    const initial: Record<string, ChainBalance> = {};
-    CHAINS.forEach((chain) => {
-      initial[chain.id] = {
-        chain: chain.name,
-        balance: "0",
-        isLoading: true,
-        error: null,
-      };
-    });
-    return initial;
-  });
-
-  // Store real Ethereum balance to use when mock is cleared
-  const realEthBalanceRef = useRef<string>("0");
-
-  const fetchBalances = async () => {
-    // Set all to loading
-    setBalances((prev) => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach((key) => {
-        updated[key] = { ...updated[key], isLoading: true, error: null };
-      });
-      return updated;
-    });
-
-    // Fetch Arc balance (TreasuryVault contract balance on Arc)
-    // Arc balance is ALWAYS real (never mocked)
-    try {
-      const arcResponse = await getArcBalance(treasuryVaultAddress);
-      if (arcResponse.success && arcResponse.data) {
-        setBalances((prev) => ({
-          ...prev,
-          arc: {
-            chain: "Arc",
-            balance: arcResponse.data.balance,
-            isLoading: false,
-            error: null,
-          },
-        }));
-      } else {
-        throw new Error(arcResponse.error || "Failed to fetch Arc balance");
-      }
-    } catch (error: any) {
-      setBalances((prev) => ({
-        ...prev,
-        arc: {
-          chain: "Arc",
-          balance: "0",
-          isLoading: false,
-          error: error.message,
-        },
-      }));
-    }
-
-    // Fetch Ethereum balance (Gateway wallet balance on Sepolia)
-    try {
-      const ethResponse = await getSepoliaBalance(treasuryVaultAddress);
-      if (ethResponse.success && ethResponse.data) {
-        // Store real balance for later use
-        realEthBalanceRef.current = ethResponse.data.balance;
-
-        // Check for mocked ethereum balance in sessionStorage (temporary)
-        const mockedEthBalance = sessionStorage.getItem("mockedEthereumBalance");
-        setBalances((prev) => ({
-          ...prev,
-          ethereum: {
-            chain: "Ethereum",
-            balance: mockedEthBalance || ethResponse.data.balance,
-            isLoading: false,
-            error: null,
-          },
-        }));
-      } else {
-        throw new Error(ethResponse.error || "Failed to fetch Ethereum balance");
-      }
-    } catch (error: any) {
-      setBalances((prev) => ({
-        ...prev,
-        ethereum: {
-          chain: "Ethereum",
-          balance: "0",
-          isLoading: false,
-          error: error.message,
-        },
-      }));
-    }
-
-    // Mock balances for Base, Arbitrum, Polygon (placeholders)
-    setTimeout(() => {
-      setBalances((prev) => ({
-        ...prev,
-        base: {
-          chain: "Base",
-          balance: "0",
-          isLoading: false,
-          error: null,
-        },
-        arbitrum: {
-          chain: "Arbitrum",
-          balance: "0",
-          isLoading: false,
-          error: null,
-        },
-        polygon: {
-          chain: "Polygon",
-          balance: "0",
-          isLoading: false,
-          error: null,
-        },
-      }));
-    }, 500);
-  };
-
-  useEffect(() => {
-    fetchBalances();
-
-    // Poll for sessionStorage changes to update Ethereum balance in real-time
-    const interval = setInterval(() => {
-      const mockedEthBalance = sessionStorage.getItem("mockedEthereumBalance");
-
-      setBalances((prev) => {
-        const updated = { ...prev };
-
-        // Update Ethereum balance if mocked (Arc is never mocked)
-        if (prev.ethereum && !prev.ethereum.isLoading) {
-          updated.ethereum = {
-            ...prev.ethereum,
-            // Use mocked balance if exists, otherwise use real balance from ref
-            balance: mockedEthBalance || realEthBalanceRef.current
-          };
-        }
-
-        return updated;
-      });
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, []);
+  const { balances, refetch } = useMultiChainBalances();
 
   return (
     <div>
@@ -220,7 +73,7 @@ export function MultiChainBalances() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={fetchBalances}
+          onClick={refetch}
           disabled={Object.values(balances).some((b) => b.isLoading)}
           className="h-7 px-2 text-xs"
         >

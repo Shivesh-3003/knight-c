@@ -144,6 +144,17 @@ export const treasuryVaultABI = [
   },
   {
     type: "function",
+    name: "updatePot",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "potId", type: "bytes32" },
+      { name: "newBudget", type: "uint256" },
+      { name: "newThreshold", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "depositToTreasury",
     stateMutability: "nonpayable",
     inputs: [{ name: "amount", type: "uint256" }],
@@ -161,6 +172,19 @@ export const treasuryVaultABI = [
     name: "pending",
     stateMutability: "view",
     inputs: [{ name: "", type: "bytes32" }],
+    outputs: [
+      { name: "potId", type: "bytes32" },
+      { name: "recipients", type: "address[]" },
+      { name: "amounts", type: "uint256[]" },
+      { name: "approvalCount", type: "uint256" },
+      { name: "executed", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "getPendingDetails",
+    stateMutability: "view",
+    inputs: [{ name: "txHash", type: "bytes32" }],
     outputs: [
       { name: "potId", type: "bytes32" },
       { name: "recipients", type: "address[]" },

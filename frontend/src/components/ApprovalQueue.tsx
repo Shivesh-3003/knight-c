@@ -1,14 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Clock, Users, Loader2, ExternalLink } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CheckCircle2, Clock, Users, Loader2, ExternalLink, RefreshCw, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useReadContracts, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { treasuryContract } from "@/lib/wagmi";
 import { treasuryVaultAddress } from "@/lib/contract";
 import { POT_NAMES } from "@/lib/constants";
 import { formatUSDC, getExplorerTxUrl, truncateTxHash } from "@/lib/utils";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface PendingPayment {
   txHash: string;
@@ -27,13 +29,16 @@ export function ApprovalQueue() {
   const [isLoading, setIsLoading] = useState(true);
   const [approvingTxHash, setApprovingTxHash] = useState<string | null>(null);
 
+  const { roleInfo } = useUserRole();
+  const canApprove = roleInfo.permissions.approvePayments;
+
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
 
   // Read pending queue indices (try to read indices 0-19)
-  const { data: queueData, refetch: refetchQueue } = useReadContracts({
+  const { data: queueData, refetch: refetchQueue, isLoading: isLoadingQueue } = useReadContracts({
     contracts: Array.from({ length: MAX_QUEUE_SIZE }, (_, i) => ({
       address: treasuryVaultAddress,
       ...treasuryContract,
@@ -42,28 +47,41 @@ export function ApprovalQueue() {
     })),
   });
 
-  // Extract valid tx hashes from queue
-  const validTxHashes = queueData
-    ?.map((item) => item.result as `0x${string}` | undefined)
-    .filter((hash) => hash && hash !== "0x0000000000000000000000000000000000000000000000000000000000000000")
-    .slice(0, 10) || []; // Limit to 10 for display
+  // Extract valid tx hashes from queue (memoized to prevent infinite loop)
+  const validTxHashes = useMemo(() => {
+    const hashes = queueData
+      ?.map((item) => item.result as `0x${string}` | undefined)
+      .filter((hash) => hash && hash !== "0x0000000000000000000000000000000000000000000000000000000000000000")
+      .slice(0, 10) || []; // Limit to 10 for display
+
+    console.log("[ApprovalQueue] Valid tx hashes from queue:", hashes);
+    return hashes;
+  }, [queueData]);
 
   // Read pending payment details for each hash
   const { data: pendingDetails, isLoading: isLoadingDetails } = useReadContracts({
     contracts: validTxHashes.map((txHash) => ({
       address: treasuryVaultAddress,
       ...treasuryContract,
-      functionName: "pending",
+      functionName: "getPendingDetails",
       args: [txHash as `0x${string}`],
     })),
   });
 
   // Process pending payments
   useEffect(() => {
+    console.log("[ApprovalQueue] Processing pending details:", {
+      pendingDetails,
+      validTxHashesLength: validTxHashes.length,
+      isLoadingDetails
+    });
+
     if (pendingDetails && validTxHashes.length > 0) {
       const payments: PendingPayment[] = [];
 
       pendingDetails.forEach((detail, index) => {
+        console.log(`[ApprovalQueue] Detail ${index}:`, detail);
+
         if (detail.status === "success" && detail.result) {
           const [potId, recipients, amounts, approvalCount, executed] = detail.result as [
             `0x${string}`,
@@ -73,8 +91,19 @@ export function ApprovalQueue() {
             boolean
           ];
 
+          console.log(`[ApprovalQueue] Pending payment ${index}:`, {
+            potId,
+            recipients,
+            amounts,
+            approvalCount,
+            executed
+          });
+
           // Skip executed payments
-          if (executed) return;
+          if (executed) {
+            console.log(`[ApprovalQueue] Skipping executed payment ${index}`);
+            return;
+          }
 
           // Convert potId bytes32 to string
           const potIdStr = new TextDecoder()
@@ -104,12 +133,17 @@ export function ApprovalQueue() {
         }
       });
 
+      console.log("[ApprovalQueue] Final payments array:", payments);
       setPendingPayments(payments);
       setIsLoading(false);
+    } else if (validTxHashes.length === 0 && !isLoadingDetails && !isLoadingQueue) {
+      console.log("[ApprovalQueue] No pending payments in queue");
+      setPendingPayments([]);
+      setIsLoading(false);
     } else {
-      setIsLoading(isLoadingDetails);
+      setIsLoading(isLoadingDetails || isLoadingQueue);
     }
-  }, [pendingDetails, validTxHashes, isLoadingDetails]);
+  }, [pendingDetails, validTxHashes, isLoadingDetails, isLoadingQueue]);
 
   // Handle approval
   const handleApprove = async (txHash: string, potName: string) => {
@@ -189,6 +223,13 @@ export function ApprovalQueue() {
     return approvingTxHash === txHash && (isPending || isConfirming);
   };
 
+  const handleRefresh = () => {
+    console.log("[ApprovalQueue] Manual refresh triggered");
+    refetchQueue();
+  };
+
+  const isRefreshing = isLoadingQueue || isLoadingDetails;
+
   if (isLoading) {
     return (
       <Card>
@@ -202,6 +243,20 @@ export function ApprovalQueue() {
 
   return (
     <div className="space-y-4">
+      {/* Refresh Button */}
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Refresh Queue'}
+        </Button>
+      </div>
+
       {pendingPayments.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -215,8 +270,8 @@ export function ApprovalQueue() {
       ) : (
         pendingPayments.map((payment) => {
           const approving = isApproving(payment.txHash);
-          // Note: In real implementation, you'd need to calculate required threshold from pot details
-          const requiredApprovals = 2; // Placeholder - should come from pot.approvers.length / 2 + 1
+          // Hardcoded for demo: All pots require 1 approval (CFO only)
+          const requiredApprovals = 1;
 
           return (
             <Card key={payment.txHash} className="card-shadow">
@@ -272,31 +327,44 @@ export function ApprovalQueue() {
                 </div>
 
                 <div className="pt-2 border-t">
-                  <Button
-                    onClick={() => handleApprove(payment.txHash, payment.potName)}
-                    className="w-full"
-                    disabled={
-                      approving ||
-                      payment.approvalCount >= BigInt(requiredApprovals)
-                    }
-                  >
-                    {approving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {isPending ? "Confirming..." : "Approving..."}
-                      </>
-                    ) : payment.approvalCount >= BigInt(requiredApprovals) ? (
-                      <>
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        Fully Approved
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        Approve Payment
-                      </>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="w-full">
+                        <Button
+                          onClick={() => handleApprove(payment.txHash, payment.potName)}
+                          className="w-full"
+                          disabled={
+                            !canApprove ||
+                            approving ||
+                            payment.approvalCount >= BigInt(requiredApprovals)
+                          }
+                        >
+                          {!canApprove && <Lock className="mr-2 h-4 w-4" />}
+                          {approving ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              {isPending ? "Confirming..." : "Approving..."}
+                            </>
+                          ) : payment.approvalCount >= BigInt(requiredApprovals) ? (
+                            <>
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Fully Approved
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Approve Payment
+                            </>
+                          )}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {!canApprove && (
+                      <TooltipContent>
+                        <p>Only CFO can approve payments</p>
+                      </TooltipContent>
                     )}
-                  </Button>
+                  </Tooltip>
                 </div>
               </CardContent>
             </Card>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +31,7 @@ export function CreatePotModal({ open, onOpenChange, onSuccess }: CreatePotModal
   const [threshold, setThreshold] = useState(DEFAULT_APPROVAL_THRESHOLD.toString());
 
   const { address } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
@@ -95,42 +95,48 @@ export function CreatePotModal({ open, onOpenChange, onSuccess }: CreatePotModal
   };
 
   // Handle transaction confirmation
-  if (isConfirmed && hash) {
-    toast.success("Pot Created!", {
-      description: (
-        <div className="space-y-1">
-          <p>Department budget has been created successfully</p>
-          <a
-            href={getExplorerTxUrl(hash)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:underline text-xs"
-          >
-            View on Explorer: {truncateTxHash(hash)}
-          </a>
-        </div>
-      ),
-    });
+  useEffect(() => {
+    if (isConfirmed && hash) {
+      toast.success("Pot Created!", {
+        description: (
+          <div className="space-y-1">
+            <p>Department budget has been created successfully</p>
+            <a
+              href={getExplorerTxUrl(hash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline text-xs"
+            >
+              View on Explorer: {truncateTxHash(hash)}
+            </a>
+          </div>
+        ),
+      });
 
-    // Reset form
-    setPotName("");
-    setBudget("");
-    setApprovers([""]);
-    setThreshold(DEFAULT_APPROVAL_THRESHOLD.toString());
+      // Reset form
+      setPotName("");
+      setBudget("");
+      setApprovers([""]);
+      setThreshold(DEFAULT_APPROVAL_THRESHOLD.toString());
 
-    // Close modal and refresh data
-    onOpenChange(false);
-    onSuccess?.();
-  }
+      // Close modal and refresh data
+      onOpenChange(false);
+      onSuccess?.();
+      reset();
+    }
+  }, [isConfirmed, hash, onSuccess, onOpenChange, reset]);
 
   // Handle transaction error
-  if (error) {
-    toast.error("Transaction Failed", {
-      description: error.message.includes("Pot exists")
-        ? "A pot with this name already exists"
-        : error.message,
-    });
-  }
+  useEffect(() => {
+    if (error) {
+      toast.error("Transaction Failed", {
+        description: error.message.includes("Pot exists")
+          ? "A pot with this name already exists"
+          : error.message,
+      });
+      reset();
+    }
+  }, [error, reset]);
 
   // Add approver field
   const handleAddApprover = () => {

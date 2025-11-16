@@ -15,6 +15,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ReallocationModal } from "@/components/ReallocationModal";
 import { treasuryContract } from "@/lib/wagmi";
 import { treasuryVaultAddress } from "@/lib/contract";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   stringToBytes32,
   parseUSDC,
@@ -33,6 +34,7 @@ interface SinglePaymentModalProps {
     name: string;
     budget: bigint;
     spent: bigint;
+    threshold: bigint;
   };
   treasuryBalance?: bigint;
   onSuccess?: () => void;
@@ -48,6 +50,9 @@ export function SinglePaymentModal({
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [showReallocation, setShowReallocation] = useState(false);
+
+  const { role } = useUserRole();
+  const isCfo = role === "cfo";
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -104,8 +109,9 @@ export function SinglePaymentModal({
       const available = pot.budget - pot.spent;
       const amountWei = parseUSDC(amount);
 
-      // Determine if payment requires approval based on threshold
-      const requiresApproval = amountWei > parseUSDC("50000"); // DEFAULT_APPROVAL_THRESHOLD
+      // Determine if payment requires approval based on pot's threshold
+      // CFO bypasses approval regardless of amount
+      const requiresApproval = amountWei > pot.threshold && !isCfo;
 
       toast.success(
         requiresApproval ? "Payment Pending Approval" : "Payment Executed",
@@ -139,7 +145,7 @@ export function SinglePaymentModal({
       onOpenChange(false);
       onSuccess?.();
     }
-  }, [isConfirmed, hash, amount, pot.budget, pot.spent, onOpenChange, onSuccess, reset]);
+  }, [isConfirmed, hash, amount, pot.budget, pot.spent, pot.threshold, isCfo, onOpenChange, onSuccess, reset]);
 
   // Handle transaction error
   useEffect(() => {

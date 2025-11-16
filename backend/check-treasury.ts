@@ -1,6 +1,6 @@
 import { CircleService } from './src/services/circle.service';
 
-const TREASURY_ADDRESS = '0x4094b8392d2Ca5A72185C341b6bbDcBA2f8404a4';
+const TREASURY_ADDRESS = '0x9e347f606F542739741223A0DB6a1Cce81A1eEE9';
 
 async function main() {
   const circleService = new CircleService();

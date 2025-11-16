@@ -187,6 +187,69 @@ export async function getArcBalance(address: string): Promise<ApiResponse<Balanc
 }
 
 /**
+ * Get USDC balance on Base Sepolia
+ * @param address - Wallet address
+ */
+export async function getBaseBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/base/${address}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Get USDC balance on Arbitrum Sepolia
+ * @param address - Wallet address
+ */
+export async function getArbitrumBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/arbitrum/${address}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
+ * Get USDC balance on Polygon Amoy
+ * @param address - Wallet address
+ */
+export async function getPolygonBalance(address: string): Promise<ApiResponse<BalanceResponse>> {
+  try {
+    const response = await api.get<ApiResponse<BalanceResponse>>(
+      `/api/circle/balance/polygon/${address}`
+    );
+    return response.data;
+  } catch (error) {
+    if (isApiError(error)) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+      };
+    }
+    return { success: false, error: "Unknown error occurred" };
+  }
+}
+
+/**
  * Get treasury contract balance (on-chain)
  */
 export async function getTreasuryBalance(): Promise<ApiResponse<TreasuryBalanceResponse>> {

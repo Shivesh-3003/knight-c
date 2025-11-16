@@ -14,14 +14,14 @@ import {TreasuryVault} from "src/TreasuryVault.sol";
  */
 contract Setup is Script {
     // Treasury contract address (must be set)
-    address constant TREASURY_ADDRESS = 0x4094b8392d2Ca5A72185C341b6bbDcBA2f8404a4;
+    address constant TREASURY_ADDRESS = 0x347f32bFAA1e3bF6353fd5E3e936Dc4B71Ff75b3;
 
     // CFO and VP addresses for approvers
     address constant CFO_ADDRESS = 0x8a7E77cB7d380AE79C2aC8c9928Ecfe06eE840AB;
     address constant VP_ADDRESS = 0xe88F1F5B506d4E0122869C888FcB481FCF2476ce;
 
     // Employee address for demo payments
-    address constant EMPLOYEE_ADDRESS = 0x5e2787391eca7099e3eb30dec7679f1c39d24ac8;
+    address constant EMPLOYEE_ADDRESS = 0x5e2787391ecA7099E3eB30DEc7679f1C39D24aC8;
 
     // Pot IDs (must match frontend stringToBytes32 function)
     // Frontend uses stringToHex(str, {size: 32}) which pads the string to 32 bytes
@@ -40,10 +40,9 @@ contract Setup is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Create approvers array (CFO + VP for multi-sig)
-        address[] memory approvers = new address[](2);
+        // Create approvers array (CFO only for demo)
+        address[] memory approvers = new address[](1);
         approvers[0] = CFO_ADDRESS;
-        approvers[1] = VP_ADDRESS;
 
         // Engineering Pot: $3 budget, $0.5 threshold (payments over $0.5 require approval)
         vault.createPot(
@@ -90,7 +89,7 @@ contract Setup is Script {
         console.log("Marketing: $5 budget, $0.50 approval threshold");
         console.log("Operations: $2 budget, $0.50 approval threshold");
         console.log("");
-        console.log("Approvers: CFO + VP (2-of-2 multi-sig)");
+        console.log("Approvers: CFO only (1 approval required)");
         console.log("");
         console.log("Whitelisted beneficiaries: CFO, VP, Employee");
     }

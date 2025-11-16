@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, DollarSign, Loader2, Lock, Plus, RefreshCw, ExternalLink } from "lucide-react";
+import { ArrowUpRight, DollarSign, Loader2, Lock, Plus, RefreshCw, ExternalLink, Users, Edit } from "lucide-react";
 import { useReadContracts, useAccount } from "wagmi";
 import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
@@ -11,6 +11,8 @@ import { TreasuryFunding } from "@/components/TreasuryFunding";
 import { CreatePotModal } from "@/components/CreatePotModal";
 import { BankAccountBalance } from "@/components/BankAccountBalance";
 import { MultiChainBalances } from "@/components/MultiChainBalances";
+import { BeneficiaryManagement } from "@/components/BeneficiaryManagement";
+import { EditPotModal } from "@/components/EditPotModal";
 import { treasuryContract } from "@/lib/wagmi";
 import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
 import { stringToBytes32, formatUSDC, formatNumber, getExplorerAddressUrl } from "@/lib/utils";
@@ -23,6 +25,7 @@ interface Pot {
   name: string;
   budget: bigint;
   spent: bigint;
+  threshold: bigint;
   color: string;
 }
 
@@ -32,6 +35,8 @@ export default function Dashboard() {
   const [showSingleModal, setShowSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showCreatePotModal, setShowCreatePotModal] = useState(false);
+  const [showBeneficiaryModal, setShowBeneficiaryModal] = useState(false);
+  const [showEditPotModal, setShowEditPotModal] = useState(false);
 
   // Get wallet connection status and user role
   const { isConnected } = useAccount();
@@ -40,10 +45,14 @@ export default function Dashboard() {
   // Read pot details from contract
   const { data: potsData, isLoading: isLoadingPots, refetch: refetchPots } = useReadContracts({
     contracts: POT_IDS.map((potId) => ({
+      address: treasuryVaultAddress,
       ...treasuryContract,
       functionName: "getPotDetails",
       args: [stringToBytes32(potId)],
     })),
+    query: {
+      refetchInterval: 5000, // Auto-refresh every 5 seconds
+    },
   });
 
   // Read treasury balance using custom hook
@@ -59,22 +68,30 @@ export default function Dashboard() {
   }, [isConnected, roleInfo, balance, isLoadingBalance, isBalanceError]);
 
   // Transform contract data into Pot objects
-  // MOCKED: Using hardcoded pot data for demo
   const pots: Pot[] = POT_IDS.map((potId, index) => {
-    // Mock budget and spent amounts for demo
-    const mockData: Record<PotId, { budget: bigint; spent: bigint }> = {
-      engineering: { budget: 3_000_000n, spent: 1_000_000n }, // $3 budget, $1 spent (USDC has 6 decimals)
-      marketing: { budget: 5_000_000n, spent: 4_000_000n },   // $5 budget, $4 spent
-      operations: { budget: 2_000_000n, spent: 2_000_000n },  // $2 budget, $2 spent
-    };
+    const potData = potsData?.[index];
 
-    const { budget, spent } = mockData[potId] || { budget: 0n, spent: 0n };
+    // If data not loaded yet or failed, return empty pot
+    if (potData?.status !== "success") {
+      return {
+        id: potId,
+        name: POT_NAMES[potId],
+        budget: 0n,
+        spent: 0n,
+        threshold: 0n,
+        color: POT_COLORS[potId],
+      };
+    }
+
+    // Extract real contract data: [budget, spent, threshold]
+    const [budget, spent, threshold] = potData.result as [bigint, bigint, bigint];
 
     return {
       id: potId,
       name: POT_NAMES[potId],
       budget,
       spent,
+      threshold,
       color: POT_COLORS[potId],
     };
   });
@@ -87,6 +104,16 @@ export default function Dashboard() {
     } else {
       setShowSingleModal(true);
     }
+  };
+
+  const handleManageBeneficiaries = (pot: Pot) => {
+    setSelectedPot(pot);
+    setShowBeneficiaryModal(true);
+  };
+
+  const handleEditPot = (pot: Pot) => {
+    setSelectedPot(pot);
+    setShowEditPotModal(true);
   };
 
   return (
@@ -205,10 +232,34 @@ export default function Dashboard() {
                         <CardTitle className="text-xl">{pot.name}</CardTitle>
                         <CardDescription className="mt-1">Department Budget</CardDescription>
                       </div>
-                      <div
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: pot.color }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEditPot(pot)}
+                              disabled={!roleInfo.permissions.createPots}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          {!roleInfo.permissions.createPots ? (
+                            <TooltipContent>
+                              <p>Only CFO can edit pots</p>
+                            </TooltipContent>
+                          ) : (
+                            <TooltipContent>
+                              <p>Edit pot settings</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        <div
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: pot.color }}
+                        />
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -279,6 +330,28 @@ export default function Dashboard() {
                           )}
                         </Tooltip>
                       )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="w-full">
+                            <Button
+                              onClick={() => handleManageBeneficiaries(pot)}
+                              variant="ghost"
+                              className="w-full"
+                              size="sm"
+                              disabled={!roleInfo.permissions.createPots}
+                            >
+                              {!roleInfo.permissions.createPots && <Lock className="mr-2 h-4 w-4" />}
+                              <Users className="mr-2 h-4 w-4" />
+                              Manage Beneficiaries
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {!roleInfo.permissions.createPots && (
+                          <TooltipContent>
+                            <p>Only CFO can manage beneficiaries</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
                     </div>
                   </CardContent>
                 </Card>
@@ -300,6 +373,18 @@ export default function Dashboard() {
           <BatchPaymentModal
             open={showBatchModal}
             onOpenChange={setShowBatchModal}
+            pot={selectedPot}
+            onSuccess={() => refetchPots()}
+          />
+          <BeneficiaryManagement
+            open={showBeneficiaryModal}
+            onOpenChange={setShowBeneficiaryModal}
+            potId={selectedPot.id}
+            potName={selectedPot.name}
+          />
+          <EditPotModal
+            open={showEditPotModal}
+            onOpenChange={setShowEditPotModal}
             pot={selectedPot}
             onSuccess={() => refetchPots()}
           />

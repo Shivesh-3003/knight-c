@@ -16,6 +16,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ReallocationModal } from "@/components/ReallocationModal";
 import { treasuryContract } from "@/lib/wagmi";
 import { treasuryVaultAddress } from "@/lib/contract";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   stringToBytes32,
   parseUSDC,
@@ -33,6 +34,7 @@ interface BatchPaymentModalProps {
     name: string;
     budget: bigint;
     spent: bigint;
+    threshold: bigint;
   };
   onSuccess?: () => void;
 }
@@ -53,6 +55,9 @@ export function BatchPaymentModal({
     { id: "1", recipient: "", amount: "" },
   ]);
   const [showReallocation, setShowReallocation] = useState(false);
+
+  const { role } = useUserRole();
+  const isCfo = role === "cfo";
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -147,7 +152,8 @@ export function BatchPaymentModal({
   useEffect(() => {
     if (isConfirmed && hash) {
       const totalAmount = getTotalAmount();
-      const requiresApproval = parseUSDC(totalAmount.toString()) > parseUSDC("50000");
+      // CFO bypasses approval regardless of amount
+      const requiresApproval = parseUSDC(totalAmount.toString()) > pot.threshold && !isCfo;
 
       toast.success(
         requiresApproval ? "Batch Payment Pending Approval" : "Batch Payment Executed",
@@ -182,7 +188,7 @@ export function BatchPaymentModal({
       onOpenChange(false);
       onSuccess?.();
     }
-  }, [isConfirmed, hash, payments.length, onOpenChange, onSuccess, reset]);
+  }, [isConfirmed, hash, payments.length, pot.threshold, isCfo, onOpenChange, onSuccess, reset]);
 
   // Handle transaction error
   useEffect(() => {

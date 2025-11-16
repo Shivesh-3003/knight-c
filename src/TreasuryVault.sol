@@ -122,6 +122,18 @@ contract TreasuryVault {
         whitelist[potId][beneficiary] = true;
     }
 
+    function updatePot(
+        bytes32 potId,
+        uint256 newBudget,
+        uint256 newThreshold
+    ) external onlyCfo {
+        Pot storage pot = pots[potId];
+        require(pot.budget > 0, "Pot does not exist");
+        require(newBudget >= pot.spent, "Budget cannot be less than spent");
+        pot.budget = newBudget;
+        pot.threshold = newThreshold;
+    }
+
     function submitPayment(
         bytes32 potId,
         address[] calldata recipients,
@@ -138,7 +150,8 @@ contract TreasuryVault {
             txHash := keccak256(add(data, 32), mload(data))
         }
 
-        if (total <= pot.threshold) {
+        // Execute immediately if under threshold OR if caller is CFO
+        if (total <= pot.threshold || msg.sender == cfo) {
             _executeBatchPayment(potId, recipients, amounts);
             return txHash;
         }
@@ -220,6 +233,29 @@ contract TreasuryVault {
     ) external view returns (uint256 budget, uint256 spent, uint256 threshold) {
         Pot storage pot = pots[potId];
         return (pot.budget, pot.spent, pot.threshold);
+    }
+
+    function getPendingDetails(
+        bytes32 txHash
+    )
+        external
+        view
+        returns (
+            bytes32 potId,
+            address[] memory recipients,
+            uint256[] memory amounts,
+            uint256 approvalCount,
+            bool executed
+        )
+    {
+        PendingPayment storage payment = pending[txHash];
+        return (
+            payment.potId,
+            payment.recipients,
+            payment.amounts,
+            payment.approvalCount,
+            payment.executed
+        );
     }
 
     function _sum(
