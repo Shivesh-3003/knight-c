@@ -435,4 +435,48 @@ router.get('/treasury-balance', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/circle/transfer-to-treasury
+ * Transfer from Gateway unified balance to Arc treasury (instant)
+ * This endpoint handles the full flow:
+ * 1. Create burn intent from unified balance
+ * 2. Sign with EIP-712
+ * 3. Submit to Gateway API
+ * 4. Mint on Arc
+ * 5. Deposit to treasury
+ */
+router.post('/transfer-to-treasury', async (req, res) => {
+  try {
+    const { amount, recipientAddress } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount is required',
+      });
+    }
+
+    // TODO: Implement the full transfer flow
+    // For now, this is a placeholder that would call a new CircleService method
+    // The actual implementation would mirror the fund-treasury-via-gateway.ts script logic
+
+    // Example flow:
+    // 1. const burnIntent = await circleService.createBurnIntent(amount, recipientAddress);
+    // 2. const attestation = await circleService.submitBurnIntent(burnIntent);
+    // 3. const mintTx = await circleService.mintOnArc(attestation);
+    // 4. const treasuryTx = await circleService.depositToTreasury(amount);
+
+    res.status(501).json({
+      success: false,
+      error: 'Transfer-to-treasury endpoint not yet implemented. Use the CLI script for now: ts-node scripts/fund-treasury-via-gateway.ts',
+      note: 'This endpoint will handle instant transfers from unified balance once implemented',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;
