@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, DollarSign, Loader2, Lock, Plus, RefreshCw } from "lucide-react";
+import { ArrowUpRight, DollarSign, Loader2, Lock, Plus, RefreshCw, ExternalLink } from "lucide-react";
 import { useReadContracts, useAccount } from "wagmi";
 import { SinglePaymentModal } from "@/components/SinglePaymentModal";
 import { BatchPaymentModal } from "@/components/BatchPaymentModal";
@@ -13,7 +13,8 @@ import { BankAccountBalance } from "@/components/BankAccountBalance";
 import { MultiChainBalances } from "@/components/MultiChainBalances";
 import { treasuryContract } from "@/lib/wagmi";
 import { POT_IDS, POT_NAMES, POT_COLORS, type PotId } from "@/lib/constants";
-import { stringToBytes32, formatUSDC, formatNumber } from "@/lib/utils";
+import { stringToBytes32, formatUSDC, formatNumber, getExplorerAddressUrl } from "@/lib/utils";
+import { treasuryVaultAddress } from "@/lib/contract";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useTreasuryBalance } from "@/hooks/useTreasuryBalance";
 
@@ -58,10 +59,16 @@ export default function Dashboard() {
   }, [isConnected, roleInfo, balance, isLoadingBalance, isBalanceError]);
 
   // Transform contract data into Pot objects
+  // MOCKED: Using hardcoded pot data for demo
   const pots: Pot[] = POT_IDS.map((potId, index) => {
-    const potData = potsData?.[index];
-    const budget = potData?.status === "success" ? (potData.result as [bigint, bigint, bigint])[0] : 0n;
-    const spent = potData?.status === "success" ? (potData.result as [bigint, bigint, bigint])[1] : 0n;
+    // Mock budget and spent amounts for demo
+    const mockData: Record<PotId, { budget: bigint; spent: bigint }> = {
+      engineering: { budget: 3_000_000n, spent: 1_000_000n }, // $3 budget, $1 spent (USDC has 6 decimals)
+      marketing: { budget: 5_000_000n, spent: 4_000_000n },   // $5 budget, $4 spent
+      operations: { budget: 2_000_000n, spent: 2_000_000n },  // $2 budget, $2 spent
+    };
+
+    const { budget, spent } = mockData[potId] || { budget: 0n, spent: 0n };
 
     return {
       id: potId,
@@ -130,12 +137,23 @@ export default function Dashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-sm">
-            <div className="flex items-center gap-1 text-success">
-              <ArrowUpRight className="h-4 w-4" />
-              <span className="font-medium">USDC</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-1 text-success">
+                <ArrowUpRight className="h-4 w-4" />
+                <span className="font-medium">USDC</span>
+              </div>
+              <span className="text-muted-foreground">on Arc Network</span>
             </div>
-            <span className="text-muted-foreground">on Arc Network</span>
+            <a
+              href={getExplorerAddressUrl(treasuryVaultAddress)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              View on Arc Testnet
+              <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
         </CardContent>
       </Card>
@@ -276,6 +294,7 @@ export default function Dashboard() {
             open={showSingleModal}
             onOpenChange={setShowSingleModal}
             pot={selectedPot}
+            treasuryBalance={balance ? BigInt(Math.floor(parseFloat(balance) * 1_000_000)) : 0n}
             onSuccess={() => refetchPots()}
           />
           <BatchPaymentModal

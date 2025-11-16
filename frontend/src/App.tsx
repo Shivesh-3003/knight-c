@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +18,7 @@ import { Funding } from "./pages/Funding";
 
 const queryClient = new QueryClient();
 
+<<<<<<< Updated upstream
 const App = () => (
   <WagmiProvider config={config}>
     <QueryClientProvider client={queryClient}>
@@ -47,5 +49,43 @@ const App = () => (
     </QueryClientProvider>
   </WagmiProvider>
 );
+=======
+const App = () => {
+  // Clear mocked Ethereum balance on page load (ensures fresh start after refresh)
+  useEffect(() => {
+    sessionStorage.removeItem("mockedEthereumBalance");
+  }, []);
+
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <RequireWallet>
+                    <Layout />
+                  </RequireWallet>
+                }
+              >
+                <Route index element={<Dashboard />} />
+                <Route path="approvals" element={<Approvals />} />
+                <Route path="scheduled" element={<ScheduledFlows />} />
+                <Route path="compliance" element={<Compliance />} />
+                <Route path="walletgateway" element={<WalletGateway />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+};
+>>>>>>> Stashed changes
 
 export default App;

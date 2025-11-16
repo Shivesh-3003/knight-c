@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,9 @@ export function MultiChainBalances() {
     return initial;
   });
 
+  // Store real Ethereum balance to use when mock is cleared
+  const realEthBalanceRef = useRef<string>("0");
+
   const fetchBalances = async () => {
     // Set all to loading
     setBalances((prev) => {
@@ -97,6 +100,7 @@ export function MultiChainBalances() {
     });
 
     // Fetch Arc balance (TreasuryVault contract balance on Arc)
+    // Arc balance is ALWAYS real (never mocked)
     try {
       const arcResponse = await getArcBalance(treasuryVaultAddress);
       if (arcResponse.success && arcResponse.data) {
@@ -128,11 +132,16 @@ export function MultiChainBalances() {
     try {
       const ethResponse = await getSepoliaBalance(treasuryVaultAddress);
       if (ethResponse.success && ethResponse.data) {
+        // Store real balance for later use
+        realEthBalanceRef.current = ethResponse.data.balance;
+
+        // Check for mocked ethereum balance in sessionStorage (temporary)
+        const mockedEthBalance = sessionStorage.getItem("mockedEthereumBalance");
         setBalances((prev) => ({
           ...prev,
           ethereum: {
             chain: "Ethereum",
-            balance: ethResponse.data.balance,
+            balance: mockedEthBalance || ethResponse.data.balance,
             isLoading: false,
             error: null,
           },
@@ -180,6 +189,28 @@ export function MultiChainBalances() {
 
   useEffect(() => {
     fetchBalances();
+
+    // Poll for sessionStorage changes to update Ethereum balance in real-time
+    const interval = setInterval(() => {
+      const mockedEthBalance = sessionStorage.getItem("mockedEthereumBalance");
+
+      setBalances((prev) => {
+        const updated = { ...prev };
+
+        // Update Ethereum balance if mocked (Arc is never mocked)
+        if (prev.ethereum && !prev.ethereum.isLoading) {
+          updated.ethereum = {
+            ...prev.ethereum,
+            // Use mocked balance if exists, otherwise use real balance from ref
+            balance: mockedEthBalance || realEthBalanceRef.current
+          };
+        }
+
+        return updated;
+      });
+    }, 500);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (

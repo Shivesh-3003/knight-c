@@ -34,6 +34,7 @@ interface SinglePaymentModalProps {
     budget: bigint;
     spent: bigint;
   };
+  treasuryBalance?: bigint;
   onSuccess?: () => void;
 }
 
@@ -41,6 +42,7 @@ export function SinglePaymentModal({
   open,
   onOpenChange,
   pot,
+  treasuryBalance,
   onSuccess,
 }: SinglePaymentModalProps) {
   const [recipient, setRecipient] = useState("");
@@ -73,12 +75,11 @@ export function SinglePaymentModal({
       const potId = stringToBytes32(pot.id);
       const amountWei = parseUSDC(amount);
 
-      // Check if payment exceeds available budget (client-side check)
-      const available = pot.budget - pot.spent;
+      // Check if payment exceeds available treasury balance (client-side check)
+      const available = treasuryBalance || 0n;
       if (amountWei > available) {
-        setShowReallocation(true);
-        toast.error("Insufficient Budget", {
-          description: "Budget reallocation required for this payment",
+        toast.error("Insufficient Treasury Balance", {
+          description: "The treasury does not have enough USDC for this payment",
         });
         return;
       }
@@ -166,7 +167,7 @@ export function SinglePaymentModal({
   }, [error, reset]);
 
   const isSubmitting = isPending || isConfirming;
-  const available = pot.budget - pot.spent;
+  const available = treasuryBalance || 0n;
 
   return (
     <>
@@ -210,10 +211,10 @@ export function SinglePaymentModal({
                 />
               </div>
 
-              {/* Available Budget */}
+              {/* Available Treasury Balance */}
               <div className="rounded-lg bg-muted p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Available:</span>
+                  <span className="text-muted-foreground">Treasury Balance Available:</span>
                   <span className="font-semibold text-financial">
                     {formatUSDC(available)}
                   </span>

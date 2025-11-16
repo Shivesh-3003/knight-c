@@ -23,6 +23,21 @@ export function BankAccountBalance({ onBalanceChange }: BankAccountBalanceProps)
     onBalanceChange?.(balance);
   }, [balance, onBalanceChange]);
 
+  // Poll for localStorage changes to update balance in real-time (same window)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const stored = localStorage.getItem(BANK_BALANCE_KEY);
+      if (stored) {
+        const storedBalance = parseFloat(stored);
+        if (storedBalance !== balance) {
+          setBalance(storedBalance);
+        }
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [balance]);
+
   // Export function to deduct from balance (will be called from TreasuryFunding)
   useEffect(() => {
     // Expose global function to deduct from bank balance

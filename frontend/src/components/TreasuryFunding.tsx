@@ -42,6 +42,7 @@ export function TreasuryFunding() {
   const fetchTreasuryBalance = async () => {
     setIsLoadingBalance(true);
     try {
+      // Always fetch real API balance (no mocking for treasury)
       const response = await getTreasuryBalance();
       if (response.success && response.data) {
         setTreasuryBalance(response.data.balance);
@@ -79,7 +80,7 @@ export function TreasuryFunding() {
     setTransferStatus("pending");
 
     try {
-      // Step 1: Deduct from bank balance (simulate Circle Mint)
+      // Step 1: Deduct from bank balance immediately
       deductFromBalance(parseFloat(amount));
 
       toast({
@@ -87,25 +88,24 @@ export function TreasuryFunding() {
         description: `Converting $${formatNumber(parseFloat(amount))} USD to USDC...`,
       });
 
-      // Step 2: Call mock-mint API to deposit USDC to treasury
-      const response = await mockMintAndDeposit(amount, selectedChain);
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      if (!response.success || !response.data) {
-        // Refund bank balance if deposit failed
-        deductFromBalance(-parseFloat(amount));
-        throw new Error(response.error || "Deposit failed");
-      }
+      // MOCKED: Set Ethereum balance to deposited amount (REPLACE, not add)
+      // This simulates the USD -> USDC conversion appearing on Ethereum
+      sessionStorage.setItem("mockedEthereumBalance", amount);
 
-      const { transactionHash, destinationChain, type } = response.data;
-      setTransferId(transactionHash);
+      // Generate mock transaction hash
+      const mockTxHash = `0x${Math.random().toString(16).substring(2, 66)}`;
+      setTransferId(mockTxHash);
 
       setTransferStatus("complete");
       toast({
         title: "✅ Deposit Complete",
-        description: `$${formatNumber(parseFloat(amount))} successfully deposited to ${destinationChain}!`,
+        description: `$${formatNumber(parseFloat(amount))} successfully deposited to ${selectedChain === "arc" ? "Arc Testnet" : SUPPORTED_CHAINS.find(c => c.id === selectedChain)?.name}!`,
       });
 
-      // Refresh treasury balance
+      // Refresh treasury balance from sessionStorage
       await fetchTreasuryBalance();
 
       // Reset form
@@ -115,6 +115,8 @@ export function TreasuryFunding() {
     } catch (error: any) {
       console.error("Deposit error:", error);
       setTransferStatus("failed");
+      // Refund bank balance if deposit failed
+      deductFromBalance(-parseFloat(amount));
       toast({
         title: "❌ Deposit Error",
         description: error.message || "Failed to deposit funds.",
