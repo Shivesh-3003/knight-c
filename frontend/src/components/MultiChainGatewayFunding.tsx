@@ -104,6 +104,7 @@ interface ChainStatus {
   depositTxHash?: string;
   depositBlock?: number;
   currentBlock?: number;
+  depositAmount?: string;
 }
 
 export function MultiChainGatewayFunding() {
@@ -150,6 +151,15 @@ export function MultiChainGatewayFunding() {
   const fetchUnifiedBalance = async () => {
     if (!address) return;
 
+    // First, check for locally tracked balance (since Circle API doesn't expose it)
+    const localBalance = localStorage.getItem(`gateway-balance-${address}`);
+    if (localBalance) {
+      console.log(`📊 Using locally tracked balance: ${localBalance} USDC`);
+      setUnifiedBalance(localBalance);
+      return;
+    }
+
+    // Try API (will likely return 0 since Circle doesn't expose this endpoint)
     try {
       const response = await getGatewayBalance(address);
       if (response.success && response.data) {
@@ -192,6 +202,14 @@ export function MultiChainGatewayFunding() {
           console.log(`\n✅ Finality Reached for ${CHAINS[chainKey as ChainKey].name}!`);
           console.log(`  Total confirmations: ${confirmations}/32`);
           console.log(`  Unified balance will be updated shortly...`);
+
+          // Update local balance tracking
+          if (address && status.depositAmount) {
+            const currentBalance = parseFloat(localStorage.getItem(`gateway-balance-${address}`) || "0");
+            const newBalance = currentBalance + parseFloat(status.depositAmount);
+            localStorage.setItem(`gateway-balance-${address}`, newBalance.toString());
+            console.log(`  💰 Updated local balance: ${currentBalance} + ${status.depositAmount} = ${newBalance} USDC`);
+          }
 
           setChainStatuses((prev) => ({
             ...prev,
@@ -359,6 +377,7 @@ export function MultiChainGatewayFunding() {
           status: "waiting_finality",
           depositTxHash: depositTx,
           depositBlock: depositBlock,
+          depositAmount: depositAmount,
         },
       }));
 
@@ -404,6 +423,14 @@ export function MultiChainGatewayFunding() {
       const response = await transferToTreasury(transferAmount, address);
 
       if (response.success) {
+        // Deduct from local balance tracking
+        if (address) {
+          const currentBalance = parseFloat(localStorage.getItem(`gateway-balance-${address}`) || "0");
+          const newBalance = Math.max(0, currentBalance - parseFloat(transferAmount));
+          localStorage.setItem(`gateway-balance-${address}`, newBalance.toString());
+          console.log(`  💰 Updated local balance: ${currentBalance} - ${transferAmount} = ${newBalance} USDC`);
+        }
+
         toast({
           title: "✅ Treasury Funded!",
           description: `${transferAmount} USDC transferred to treasury on Arc`,
