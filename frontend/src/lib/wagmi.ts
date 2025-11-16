@@ -1,6 +1,7 @@
 import { http, createConfig } from "wagmi";
 import { defineChain } from "viem";
 import { injected, walletConnect, coinbaseWallet, metaMask } from "wagmi/connectors";
+import { sepolia, baseSepolia, arbitrumSepolia, polygonAmoy, avalancheFuji } from "viem/chains";
 import { ARC_TESTNET_CHAIN_ID } from "./constants";
 
 // Arc Testnet Chain Definition
@@ -32,7 +33,7 @@ export const arcTestnet = defineChain({
 
 // Wagmi Configuration
 export const config = createConfig({
-  chains: [arcTestnet],
+  chains: [arcTestnet, sepolia, baseSepolia, arbitrumSepolia, polygonAmoy, avalancheFuji],
   connectors: [
     metaMask({
       dappMetadata: {
@@ -62,6 +63,11 @@ export const config = createConfig({
   ],
   transports: {
     [arcTestnet.id]: http(arcTestnet.rpcUrls.default.http[0]),
+    [sepolia.id]: http(),
+    [baseSepolia.id]: http(),
+    [arbitrumSepolia.id]: http(),
+    [polygonAmoy.id]: http(),
+    [avalancheFuji.id]: http(),
   },
 });
 
@@ -192,10 +198,33 @@ export const treasuryContract = {
 
 // Helper functions
 export function isCorrectNetwork(chainId: number | undefined): boolean {
-  return chainId === ARC_TESTNET_CHAIN_ID;
+  // Accept all supported chains as correct
+  const supportedChainIds = [
+    arcTestnet.id,
+    sepolia.id,
+    baseSepolia.id,
+    arbitrumSepolia.id,
+    polygonAmoy.id,
+    avalancheFuji.id,
+  ];
+  return chainId !== undefined && supportedChainIds.includes(chainId);
 }
 
 export function getNetworkName(chainId: number | undefined): string {
-  if (chainId === ARC_TESTNET_CHAIN_ID) return "Arc Testnet";
-  return `Unknown Network (${chainId})`;
+  switch (chainId) {
+    case arcTestnet.id:
+      return "Arc Testnet";
+    case sepolia.id:
+      return "Ethereum Sepolia";
+    case baseSepolia.id:
+      return "Base Sepolia";
+    case arbitrumSepolia.id:
+      return "Arbitrum Sepolia";
+    case polygonAmoy.id:
+      return "Polygon Amoy";
+    case avalancheFuji.id:
+      return "Avalanche Fuji";
+    default:
+      return `Unknown Network (${chainId})`;
+  }
 }
