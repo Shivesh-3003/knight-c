@@ -437,6 +437,9 @@ export function MultiChainGatewayFunding() {
         });
         fetchUnifiedBalance();
         setTransferAmount("");
+
+        // Dispatch custom event to notify Dashboard to refresh treasury balance
+        window.dispatchEvent(new CustomEvent('treasury-balance-updated'));
       } else {
         throw new Error((response as any).error || "Transfer failed");
       }

@@ -3,6 +3,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/utils";
 import { useMultiChainBalances } from "@/hooks/useMultiChainBalances";
+import { useEffect } from "react";
 
 // Chain configuration with icons and colors
 const CHAINS = [
@@ -65,6 +66,20 @@ const CHAINS = [
 
 export function MultiChainBalances() {
   const { balances, refetch } = useMultiChainBalances();
+
+  // Listen for treasury balance updates
+  useEffect(() => {
+    const handleBalanceUpdate = () => {
+      console.log("[MultiChainBalances] Treasury balance update event received, refetching...");
+      refetch();
+    };
+
+    window.addEventListener('treasury-balance-updated', handleBalanceUpdate);
+
+    return () => {
+      window.removeEventListener('treasury-balance-updated', handleBalanceUpdate);
+    };
+  }, [refetch]);
 
   return (
     <div>
