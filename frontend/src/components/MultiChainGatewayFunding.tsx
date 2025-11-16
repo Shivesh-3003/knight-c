@@ -13,7 +13,13 @@ import {
   usePublicClient,
   useSwitchChain,
 } from "wagmi";
-import { parseUnits, formatUnits, type Address } from "viem";
+import {
+  parseUnits,
+  formatUnits,
+  type Address,
+  createPublicClient,
+  http,
+} from "viem";
 import {
   sepolia,
   baseSepolia,
@@ -174,7 +180,10 @@ export function MultiChainGatewayFunding() {
         if (!status.depositBlock) continue;
 
         const chain = CHAINS[chainKey as ChainKey].chain;
-        const client = usePublicClient({ chainId: chain.id });
+        const client = createPublicClient({
+          chain,
+          transport: http(),
+        });
         const currentBlock = await client.getBlockNumber();
         const confirmations = Number(currentBlock) - status.depositBlock;
 
