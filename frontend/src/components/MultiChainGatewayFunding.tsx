@@ -149,7 +149,10 @@ export function MultiChainGatewayFunding() {
       if (response.success && response.data) {
         setUnifiedBalance(response.data.balance);
       } else {
-        console.error("Failed to fetch unified balance:", response.error);
+        console.error(
+          "Failed to fetch unified balance:",
+          (response as any).error
+        );
         setUnifiedBalance("0");
       }
     } catch (error) {
@@ -267,6 +270,7 @@ export function MultiChainGatewayFunding() {
         functionName: "approve",
         args: [GATEWAY_WALLET, amount],
         chain: undefined,
+        account: address,
       });
 
       await publicClient.waitForTransactionReceipt({ hash: approveTx });
@@ -294,6 +298,7 @@ export function MultiChainGatewayFunding() {
         functionName: "deposit",
         args: [chainConfig.usdcAddress, amount],
         chain: undefined,
+        account: address,
       });
 
       const receipt = await publicClient.waitForTransactionReceipt({
@@ -359,7 +364,7 @@ export function MultiChainGatewayFunding() {
         fetchUnifiedBalance();
         setTransferAmount("");
       } else {
-        throw new Error(response.error || "Transfer failed");
+        throw new Error((response as any).error || "Transfer failed");
       }
     } catch (error: any) {
       toast({
