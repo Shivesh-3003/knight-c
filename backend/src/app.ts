@@ -1,12 +1,13 @@
+// Load environment variables FIRST, before any other imports
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+// Now import other modules (they will see the loaded env vars)
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
-import path from 'path';
 import circleRoutes from './routes/circle.routes';
-
-// Load environment variables from root directory
-dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;

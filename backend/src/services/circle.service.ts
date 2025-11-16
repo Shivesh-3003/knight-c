@@ -511,9 +511,9 @@ export class CircleService {
         destinationContract: addressToBytes32(GATEWAY_MINTER_ADDRESS),
         sourceToken: addressToBytes32(sourceUSDC || SEPOLIA_USDC_ADDRESS),
         destinationToken: addressToBytes32(destUSDC || ARC_USDC_ADDRESS),
-        sourceDepositor: addressToBytes32(userAddress),
+        sourceDepositor: addressToBytes32(this.account.address),
         destinationRecipient: addressToBytes32(userAddress),
-        sourceSigner: addressToBytes32(userAddress),
+        sourceSigner: addressToBytes32(this.account.address),
         destinationCaller: addressToBytes32('0x0000000000000000000000000000000000000000'),
         value: amountInUnits,
         salt: `0x${randomBytes(32).toString('hex')}` as `0x${string}`,
@@ -545,15 +545,21 @@ export class CircleService {
 
     const requestBody = [
       {
-        typedData,
+        // The API expects the `typedData` object to be passed as `burnIntent`
+        burnIntent: typedData.message,
         signature,
       },
     ];
 
     console.log('Submitting burn intent to Gateway API...');
 
+    // Manually stringify the body with a BigInt replacer
+    const jsonBody = JSON.stringify(requestBody, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    );
+
     try {
-      const response = await axios.post(GATEWAY_API_URL, requestBody, {
+      const response = await axios.post(GATEWAY_API_URL, jsonBody, {
         headers: { 'Content-Type': 'application/json' },
       });
 

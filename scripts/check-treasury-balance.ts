@@ -1,5 +1,8 @@
 // Quick script to check Treasury USDC balance on Arc
+import { config } from 'dotenv';
 import { createPublicClient, http, parseAbi } from 'viem';
+
+config({ path: require('path').resolve(__dirname, '../.env') });
 
 const arcTestnet = {
   id: 5042002,
@@ -13,7 +16,7 @@ const arcTestnet = {
   testnet: true,
 } as const;
 
-const TREASURY_ADDRESS = '0x4094b8392d2Ca5A72185C341b6bbDcBA2f8404a4';
+const TREASURY_ADDRESS = process.env.TREASURY_CONTRACT_ADDRESS || '0x4094b8392d2Ca5A72185C341b6bbDcBA2f8404a4';
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
 
 const erc20Abi = parseAbi([
