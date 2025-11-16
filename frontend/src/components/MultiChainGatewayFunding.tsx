@@ -189,6 +189,10 @@ export function MultiChainGatewayFunding() {
 
         if (confirmations >= 32) {
           // Finality reached!
+          console.log(`\n✅ Finality Reached for ${CHAINS[chainKey as ChainKey].name}!`);
+          console.log(`  Total confirmations: ${confirmations}/32`);
+          console.log(`  Unified balance will be updated shortly...`);
+
           setChainStatuses((prev) => ({
             ...prev,
             [chainKey]: { ...status, status: "ready" },
@@ -204,6 +208,8 @@ export function MultiChainGatewayFunding() {
           fetchUnifiedBalance();
         } else {
           // Update progress
+          console.log(`  ⏳ Progress: ${confirmations}/32 confirmations for ${CHAINS[chainKey as ChainKey].name}`);
+
           setChainStatuses((prev) => ({
             ...prev,
             [chainKey]: { ...status, currentBlock: Number(currentBlock) },
@@ -253,10 +259,16 @@ export function MultiChainGatewayFunding() {
       [selectedChain]: { status: "depositing" },
     }));
 
+    console.log('\n🔷 Starting Gateway Deposit Flow');
+    console.log(`  Chain: ${chainConfig.name}`);
+    console.log(`  Amount: ${depositAmount} USDC`);
+    console.log(`  Wallet: ${address}`);
+
     try {
       const amount = parseUnits(depositAmount, 6);
 
       // Step 1: Approve Gateway Wallet
+      console.log('\n📝 Step 1: Approving Gateway Wallet...');
       toast({
         title: "Approval Required",
         description: "Please approve the Gateway Wallet to spend your USDC",
@@ -282,9 +294,15 @@ export function MultiChainGatewayFunding() {
         account: address,
       });
 
+      console.log(`  ✓ Approval transaction submitted: ${approveTx}`);
+      console.log(`  ⏳ Waiting for approval confirmation...`);
+
       await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      console.log(`  ✓ Approval confirmed!`);
+      console.log(`  Explorer: ${chainConfig.chain.blockExplorers?.default.url}/tx/${approveTx}`);
 
       // Step 2: Deposit to Gateway Wallet
+      console.log('\n💰 Step 2: Depositing to Gateway Wallet...');
       toast({
         title: "Depositing to Gateway",
         description: "Please confirm the deposit transaction",
@@ -310,17 +328,29 @@ export function MultiChainGatewayFunding() {
         account: address,
       });
 
+      console.log(`  ✓ Deposit transaction submitted: ${depositTx}`);
+      console.log(`  ⏳ Waiting for deposit confirmation...`);
+
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: depositTx,
       });
 
+      const depositBlock = Number(receipt.blockNumber);
+      console.log(`  ✓ Deposit confirmed at block ${depositBlock}!`);
+      console.log(`  Explorer: ${chainConfig.chain.blockExplorers?.default.url}/tx/${depositTx}`);
+
       // Update status to waiting for finality
+      console.log('\n⏱️  Step 3: Waiting for Finality...');
+      console.log(`  ${chainConfig.name} requires ~32 block confirmations (~12-15 minutes)`);
+      console.log(`  Deposit block: ${depositBlock}`);
+      console.log(`  This is front-loaded - future transfers will be instant!`);
+
       setChainStatuses((prev) => ({
         ...prev,
         [selectedChain]: {
           status: "waiting_finality",
           depositTxHash: depositTx,
-          depositBlock: Number(receipt.blockNumber),
+          depositBlock: depositBlock,
         },
       }));
 
