@@ -437,6 +437,226 @@ export class CircleService {
   }
 
   /**
+   * Create and sign a burn intent for Circle Gateway transfer
+   * @param amount - Amount in USDC (as string)
+   * @param userAddress - User's wallet address
+   * @param sourceDomain - Source chain domain ID
+   * @param destinationDomain - Destination chain domain ID
+   * @returns Signed burn intent with typed data and signature
+   */
+  async createAndSignBurnIntent(
+    amount: string,
+    userAddress: Address,
+    sourceDomain: number = 0, // Default: Sepolia
+    destinationDomain: number = 26 // Default: Arc
+  ) {
+    if (!this.account) {
+      throw new Error('Private key not configured');
+    }
+
+    const amountInUnits = parseUnits(amount, 6);
+
+    // EIP-712 type definitions
+    const EIP712Domain = [
+      { name: 'name', type: 'string' },
+      { name: 'version', type: 'string' },
+    ];
+
+    const TransferSpec = [
+      { name: 'version', type: 'uint32' },
+      { name: 'sourceDomain', type: 'uint32' },
+      { name: 'destinationDomain', type: 'uint32' },
+      { name: 'sourceContract', type: 'bytes32' },
+      { name: 'destinationContract', type: 'bytes32' },
+      { name: 'sourceToken', type: 'bytes32' },
+      { name: 'destinationToken', type: 'bytes32' },
+      { name: 'sourceDepositor', type: 'bytes32' },
+      { name: 'destinationRecipient', type: 'bytes32' },
+      { name: 'sourceSigner', type: 'bytes32' },
+      { name: 'destinationCaller', type: 'bytes32' },
+      { name: 'value', type: 'uint256' },
+      { name: 'salt', type: 'bytes32' },
+      { name: 'hookData', type: 'bytes' },
+    ];
+
+    const BurnIntent = [
+      { name: 'maxBlockHeight', type: 'uint256' },
+      { name: 'maxFee', type: 'uint256' },
+      { name: 'spec', type: 'TransferSpec' },
+    ];
+
+    // Helper to convert address to bytes32
+    const addressToBytes32 = (addr: string): `0x${string}` => {
+      return `0x${addr.slice(2).padStart(64, '0')}` as `0x${string}`;
+    };
+
+    // Get source and destination USDC addresses based on domains
+    const sourceUSDC = USDC_ADDRESSES[Object.keys(SUPPORTED_CHAINS).find(
+      key => SUPPORTED_CHAINS[key].id === sourceDomain
+    ) || 'sepolia'];
+    const destUSDC = USDC_ADDRESSES[Object.keys(SUPPORTED_CHAINS).find(
+      key => SUPPORTED_CHAINS[key].id === destinationDomain
+    ) || 'arc'];
+
+    const { randomBytes } = await import('crypto');
+
+    const burnIntent = {
+      maxBlockHeight: BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'),
+      maxFee: BigInt(2_010000), // 2.01 USDC
+      spec: {
+        version: 1,
+        sourceDomain,
+        destinationDomain,
+        sourceContract: addressToBytes32(GATEWAY_WALLET_ADDRESS),
+        destinationContract: addressToBytes32(GATEWAY_MINTER_ADDRESS),
+        sourceToken: addressToBytes32(sourceUSDC || SEPOLIA_USDC_ADDRESS),
+        destinationToken: addressToBytes32(destUSDC || ARC_USDC_ADDRESS),
+        sourceDepositor: addressToBytes32(userAddress),
+        destinationRecipient: addressToBytes32(userAddress),
+        sourceSigner: addressToBytes32(userAddress),
+        destinationCaller: addressToBytes32('0x0000000000000000000000000000000000000000'),
+        value: amountInUnits,
+        salt: `0x${randomBytes(32).toString('hex')}` as `0x${string}`,
+        hookData: '0x' as `0x${string}`,
+      },
+    };
+
+    const typedData = {
+      types: { EIP712Domain, TransferSpec, BurnIntent },
+      domain: { name: 'GatewayWallet', version: '1' },
+      primaryType: 'BurnIntent' as const,
+      message: burnIntent,
+    };
+
+    // Sign the burn intent
+    const signature = await this.account.signTypedData(typedData);
+
+    return { typedData, signature, burnIntent };
+  }
+
+  /**
+   * Submit burn intent to Circle Gateway API
+   * @param typedData - EIP-712 typed data
+   * @param signature - Signature from EIP-712 signing
+   * @returns Attestation and signature from Gateway API
+   */
+  async submitBurnIntentToGateway(typedData: any, signature: `0x${string}`) {
+    const GATEWAY_API_URL = 'https://gateway-api-testnet.circle.com/v1/transfer';
+
+    const requestBody = [
+      {
+        typedData,
+        signature,
+      },
+    ];
+
+    console.log('Submitting burn intent to Gateway API...');
+
+    try {
+      const response = await axios.post(GATEWAY_API_URL, requestBody, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = response.data;
+
+      // Gateway API returns attestation and signature directly (no "success" field)
+      if (!result.attestation || !result.signature) {
+        throw new Error(`Invalid response from Gateway API: missing attestation or signature`);
+      }
+
+      console.log('Received attestation from Gateway API');
+      return {
+        attestation: result.attestation,
+        signature: result.signature,
+      };
+    } catch (error: any) {
+      console.error('Gateway API error:', error.response?.data || error.message);
+      throw new Error(`Gateway API submission failed: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Mint USDC on Arc using Gateway attestation
+   * @param attestation - Attestation from Gateway API
+   * @param signature - Signature from Gateway API
+   * @returns Transaction hash of the mint operation
+   */
+  async mintOnArcViaGateway(attestation: string, signature: string): Promise<string> {
+    if (!this.account || !this.arcWalletClient) {
+      throw new Error('Private key not configured');
+    }
+
+    console.log('Minting USDC on Arc via Gateway...');
+
+    try {
+      const mintHash = await this.arcWalletClient.writeContract({
+        address: GATEWAY_MINTER_ADDRESS,
+        abi: gatewayMinterAbi,
+        functionName: 'gatewayMint',
+        args: [attestation as `0x${string}`, signature as `0x${string}`],
+        chain: undefined,
+      });
+
+      await this.arcPublicClient.waitForTransactionReceipt({ hash: mintHash });
+      console.log(`Mint confirmed: ${mintHash}`);
+
+      return mintHash;
+    } catch (error: any) {
+      console.error('Minting on Arc failed:', error);
+      throw new Error(`Minting failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Complete transfer from Gateway unified balance to Arc treasury
+   * This is the main method called by the API endpoint
+   * @param amount - Amount in USDC
+   * @param userAddress - User's wallet address
+   * @param treasuryAddress - Treasury contract address
+   * @returns Transaction details
+   */
+  async transferFromUnifiedBalanceToTreasury(
+    amount: string,
+    userAddress: Address,
+    treasuryAddress: Address
+  ) {
+    console.log(`\n=== Starting Gateway Transfer: ${amount} USDC ===`);
+
+    try {
+      // Step 1: Create and sign burn intent
+      console.log('Step 1/4: Creating and signing burn intent...');
+      const { typedData, signature } = await this.createAndSignBurnIntent(amount, userAddress);
+
+      // Step 2: Submit to Gateway API
+      console.log('Step 2/4: Submitting to Gateway API...');
+      const { attestation, signature: apiSignature } = await this.submitBurnIntentToGateway(
+        typedData,
+        signature
+      );
+
+      // Step 3: Mint on Arc
+      console.log('Step 3/4: Minting USDC on Arc...');
+      const mintTxHash = await this.mintOnArcViaGateway(attestation, apiSignature);
+
+      // Step 4: Deposit to treasury
+      console.log('Step 4/4: Depositing to Treasury...');
+      const treasuryTxHash = await this.depositToTreasury(amount, treasuryAddress);
+
+      console.log('=== Transfer Complete! ===\n');
+
+      return {
+        success: true,
+        mintTxHash,
+        treasuryTxHash,
+        amount,
+      };
+    } catch (error: any) {
+      console.error('Transfer failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Transfer USDC to TreasuryVault on Arc (after minting via Gateway)
    *
    * @param amount - Amount in USDC

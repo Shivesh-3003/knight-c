@@ -456,25 +456,47 @@ router.post('/transfer-to-treasury', async (req, res) => {
       });
     }
 
-    // TODO: Implement the full transfer flow
-    // For now, this is a placeholder that would call a new CircleService method
-    // The actual implementation would mirror the fund-treasury-via-gateway.ts script logic
+    if (!recipientAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Recipient address is required',
+      });
+    }
 
-    // Example flow:
-    // 1. const burnIntent = await circleService.createBurnIntent(amount, recipientAddress);
-    // 2. const attestation = await circleService.submitBurnIntent(burnIntent);
-    // 3. const mintTx = await circleService.mintOnArc(attestation);
-    // 4. const treasuryTx = await circleService.depositToTreasury(amount);
+    const treasuryAddress = process.env.TREASURY_CONTRACT_ADDRESS;
+    if (!treasuryAddress) {
+      return res.status(500).json({
+        success: false,
+        error: 'Treasury contract address not configured',
+      });
+    }
 
-    res.status(501).json({
-      success: false,
-      error: 'Transfer-to-treasury endpoint not yet implemented. Use the CLI script for now: ts-node scripts/fund-treasury-via-gateway.ts',
-      note: 'This endpoint will handle instant transfers from unified balance once implemented',
+    // Execute the full transfer flow
+    console.log(`Starting instant transfer: ${amount} USDC to treasury`);
+
+    const result = await circleService.transferFromUnifiedBalanceToTreasury(
+      amount,
+      recipientAddress as `0x${string}`,
+      treasuryAddress as `0x${string}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...result,
+        message: 'Treasury funded successfully via Circle Gateway',
+        explorerUrls: {
+          mint: `https://testnet.arcscan.app/tx/${result.mintTxHash}`,
+          treasury: `https://testnet.arcscan.app/tx/${result.treasuryTxHash}`,
+        },
+      },
     });
   } catch (error: any) {
+    console.error('Transfer to treasury failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message || 'Transfer failed',
+      details: error.response?.data || error.toString(),
     });
   }
 });
