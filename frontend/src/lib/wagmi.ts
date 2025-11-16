@@ -16,10 +16,10 @@ export const arcTestnet = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["https://rpc.testnet.arc.network"],
+      http: ["https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083"],
     },
     public: {
-      http: ["https://rpc.testnet.arc.network"],
+      http: ["https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083"],
     },
   },
   blockExplorers: {

@@ -16,11 +16,11 @@ export const arcTestnet = {
   },
   rpcUrls: {
     default: {
-      http: ['https://rpc.testnet.arc.network'],
+      http: ['https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'],
       webSocket: ['wss://rpc.testnet.arc.network'],
     },
     public: {
-      http: ['https://rpc.testnet.arc.network'],
+      http: ['https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'],
       webSocket: ['wss://rpc.testnet.arc.network'],
     },
   },

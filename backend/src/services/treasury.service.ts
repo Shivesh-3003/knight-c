@@ -7,8 +7,8 @@ const arcTestnet = defineChain({
   network: 'arc-testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
   rpcUrls: {
-    default: { http: [process.env.ARC_TESTNET_RPC_URL || 'https://rpc.testnet.arc.network'] },
-    public: { http: ['https://rpc.testnet.arc.network'] },
+    default: { http: [process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'] },
+    public: { http: [process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'] },
   },
   blockExplorers: {
     default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },

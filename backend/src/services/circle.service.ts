@@ -18,11 +18,11 @@ const arcTestnet = {
   },
   rpcUrls: {
     default: {
-      http: ['https://rpc.testnet.arc.network'],
+      http: [process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'],
       webSocket: ['wss://rpc.testnet.arc.network'],
     },
     public: {
-      http: ['https://rpc.testnet.arc.network'],
+      http: [process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'],
       webSocket: ['wss://rpc.testnet.arc.network'],
     },
   },
@@ -134,7 +134,7 @@ export class CircleService {
       this.arcWalletClient = createWalletClient({
         account: this.account,
         chain: arcTestnet,
-        transport: http('https://rpc.testnet.arc.network'),
+        transport: http(process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'),
       });
     }
 
@@ -145,7 +145,7 @@ export class CircleService {
 
     this.arcPublicClient = createPublicClient({
       chain: arcTestnet,
-      transport: http('https://rpc.testnet.arc.network'),
+      transport: http(process.env.ARC_TESTNET_RPC_URL || 'https://yolo-dawn-dawn.arc-testnet.quiknode.pro/e36c7d844dd8d0e0ffa1c1eca5860be2e8d09083'),
     });
   }
 
